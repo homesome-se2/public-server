@@ -1,0 +1,10 @@
+{
+  "debugMode": false,
+  "serverPort": 8084,
+  "serverThreadPool": 10,
+  "dbIP": "localhost",
+  "dbPort": "3306",
+  "dbDatabase": "XXXXXX",
+  "dbAccount": "XXXXXX",
+  "dbPassword": "XXXXXX"
+}
