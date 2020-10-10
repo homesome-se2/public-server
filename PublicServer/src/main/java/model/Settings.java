@@ -1,4 +1,4 @@
-package model;
+package main.java.model;
 
 import com.google.gson.Gson;
 
@@ -9,7 +9,7 @@ public class Settings {
     // Settings are loaded in from 'config.json' at system boot.
     private boolean debugMode; // Trigger additional logging
     private int serverPort;
-    private int serverThreadPool; // Max umber of simultaneously connected clients
+    private int clientLimit; // Max umber of simultaneously connected clients
     // DB specs
     private String dbIP;
     private String dbPort; // Used as String when connecting to DB server
@@ -32,7 +32,7 @@ public class Settings {
             Settings s = gson.fromJson(reader, Settings.class);
             debugMode = s.debugMode;
             serverPort = s.serverPort;
-            serverThreadPool = s.serverThreadPool;
+            clientLimit = s.clientLimit;
             dbIP = s.dbIP;
             dbPort = s.dbPort;
             dbDatabase = s.dbDatabase;
@@ -65,7 +65,7 @@ public class Settings {
         return serverPort;
     }
 
-    public int getServerThreadPool() {
-        return serverThreadPool;
+    public int getClientLimit() {
+        return clientLimit;
     }
 }

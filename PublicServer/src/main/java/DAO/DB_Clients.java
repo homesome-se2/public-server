@@ -1,7 +1,8 @@
-package DAO;
+package main.java.DAO;
 
+import main.java.service.Server;
 import org.json.simple.JSONObject;
-import service.Server;
+
 
 import java.sql.*;
 
@@ -33,7 +34,7 @@ public class DB_Clients {
         return instance;
     }
 
-    private DB_Clients() {
+    public DB_Clients() {
         lock_db = new Object();
     }
 

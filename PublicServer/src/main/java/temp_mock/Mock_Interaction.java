@@ -1,8 +1,9 @@
-package temp_mock;
+package main.java.temp_mock;
 
-import model.ClientRequest;
-import service.ClientHandler;
-import service.Server;
+
+import main.java.model.ClientRequest;
+import main.java.service.ClientHandler;
+import main.java.service.Server;
 
 public class Mock_Interaction {
 
@@ -72,15 +73,15 @@ public class Mock_Interaction {
         // Toggles the gadget:
         // My lamp (SWITCH) Gadget id: 1
         int gadgetID = 1;
-        Integer[] userThreadIDs;
         while(!Server.getInstance().terminateServer) {
             Thread.sleep(12000); // 12 sec
-            isGadgetOneOn = !isGadgetOneOn; // toggle
-            String gadgetUpdate = String.format("%s::%s::%s", "316", gadgetID, isGadgetOneOn ? 1 : 0);
-            userThreadIDs = ClientHandler.getInstance().getAllUserThreadIDs();
-            for(int userThreadID : userThreadIDs) {
-                ClientHandler.getInstance().getUser(userThreadID).addToOutputQueue(gadgetUpdate);
+            int availableSessionID = ClientHandler.getInstance().getSessionID();
+            if(availableSessionID != -1) {
+                isGadgetOneOn = !isGadgetOneOn; // toggle
+                String gadgetUpdate = String.format("%s::%s::%s", "316", gadgetID, isGadgetOneOn ? 1 : 0);
+                ClientHandler.getInstance().outputToClients(availableSessionID, false, false, false, gadgetUpdate);
             }
+
         }
     }
 }
