@@ -1,6 +1,5 @@
-package model;
+package main.java.model;
 
-import java.util.concurrent.BlockingQueue;
 
 public class Client_Hub extends Client {
 
@@ -14,8 +13,9 @@ public class Client_Hub extends Client {
 
     public String alias;
 
-    public Client_Hub(int hubID, String ip, BlockingQueue<String> outputQueue, String alias) {
-        super(hubID, ip, outputQueue);
+    public Client_Hub(int hubID, String alias) {
+        super(hubID);
         this.alias = alias;
+        loggedIn = true; // logged in for specialized client
     }
 }

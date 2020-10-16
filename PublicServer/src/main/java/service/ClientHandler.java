@@ -1,22 +1,28 @@
-package service;
+package main.java.service;
 
-import DAO.DB_Clients;
-import model.Client;
-import model.ClientRequest;
-import model.Client_Hub;
-import model.Client_User;
+
+import main.java.web_resource.WebSocketServer;
+import org.eclipse.jetty.websocket.api.Session;
+import main.java.DAO.DB_Clients;
+import main.java.model.Client;
+import main.java.model.ClientRequest;
+import main.java.model.Client_Hub;
+import main.java.model.Client_User;
+import spark.Spark;
+
+
 import org.json.simple.JSONObject;
 
+
 import java.io.IOException;
-import java.net.ServerSocket;
-import java.net.Socket;
 import java.security.MessageDigest;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.Optional;
+
+import static main.java.service.Encryption.generateSalt;
+
 
 public class ClientHandler {
 
@@ -28,19 +34,16 @@ public class ClientHandler {
      * - The only class accessing the database class DB_Clients.
      */
 
-    private HashMap<Integer, Client_User> connectedUsers;
-    private HashMap<Integer, Client_Hub> connectedHubs;
+    private HashMap<Session, Client> connectedClients;
 
-    private int serverTcpPort;
-    private int threadPoolLimit;
-    private ServerSocket serverSocket;
-    private final Object lock_acceptClients;
+
+    private int clientLimit;
+    private DB_Clients clientDB;
+    private final Object lock_clients;
     private final Object lock_login;
-    private final Object lock_connectedUsers;
-    private final Object lock_connectedHubs;
+    private String theEncSessionKey = "";
 
-    // Worker thread
-    private Thread acceptClientsThread;
+
 
     // Make Singleton
     private static ClientHandler instance = null;
@@ -53,185 +56,199 @@ public class ClientHandler {
     }
 
     private ClientHandler() {
-        connectedUsers = new HashMap<>();
-        connectedHubs = new HashMap<>();
-        serverSocket = null;
-        lock_acceptClients = new Object();
+        connectedClients = new HashMap<>();
+        clientDB = new DB_Clients();
+        lock_clients = new Object();
         lock_login = new Object();
-        lock_connectedUsers = new Object();
-        lock_connectedHubs = new Object();
-        acceptClientsThread = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    acceptClientConnections();
-                } catch (Exception e) {
-                    close();
-                }
-            }
-        });
     }
 
-    public void launch(int serverTcpPort, int threadPoolLimit) {
-        this.serverTcpPort = serverTcpPort;
-        this.threadPoolLimit = threadPoolLimit;
-        acceptClientsThread.start();
+    public void launchWebSocketServer(int serverTcpPort, int clientLimit) {
+        this.clientLimit = clientLimit;
+
+        // Create web socket listening on a path, and being implemented by a class.
+        Spark.webSocket("/homesome", WebSocketServer.class);
+        Spark.port(serverTcpPort);
+        Spark.init();
+        // Browser test: http://localhost:tcpPort/
+        // If no web page is provided, should say "404 Error, com.homesome.service powered by Jetty"
+
+        System.out.println("Jetty WebSocket (web) server started");
     }
 
-    public void close() {
-        try {
-            // Write terminate msg to all client threads
-            synchronized (lock_connectedUsers) {
-                for (int key : connectedUsers.keySet()) {
-                    connectedUsers.get(key).addToOutputQueue("exit");
-                }
-            }
-            synchronized (lock_connectedHubs) {
-                for (int key : connectedHubs.keySet()) {
-                    connectedHubs.get(key).addToOutputQueue("exit");
-                }
-            }
+    public void stopWebSocketServer() {
+        Spark.stop();
+    }
 
-            if (serverSocket != null) {
-                serverSocket.close();
+
+
+    // ======================================== ACCEPT AND MANAGE NEW CLIENTS =================================================
+
+    public void addClient(Session session) {
+        synchronized (lock_clients) {
+
+            if (connectedClients.size() <= clientLimit) {
+                Client newClient = new Client();
+                connectedClients.put(session, newClient);
+            } else {
+                System.out.println("Client limit reached.");
+                if(session.isOpen()) {
+                    session.close();
+                }
             }
-            System.out.println("ClientHandler shutting down all threads");
-        } catch (IOException e) {
-            System.out.println("Unable to close serverSocket");
+            debugLog("Connected clients", String.valueOf(connectedClients.size()));
         }
     }
 
-    // ======================================== ACCEPT NEW CLIENTS =================================================
-
-    private void acceptClientConnections() throws Exception {
-        synchronized (lock_acceptClients) {
-
-            // Thread pool to manage ClientThreads.
-            ExecutorService executor = Executors.newFixedThreadPool(threadPoolLimit);
-
-            serverSocket = new ServerSocket(serverTcpPort);
-
-            int threadID = 0;
-
-            while (!Server.getInstance().terminateServer) {
-
-                Socket clientConnection = null;
-
-                try {
-                    // Receive client connection requests
-                    clientConnection = serverSocket.accept();
-
-                    // Assigning new thread for client
-                    executor.submit(new ClientThread(++threadID, clientConnection));
-
-                } catch (Exception e) {
-                    if (clientConnection != null) {
-                        clientConnection.close();
-                    }
-                    System.out.println("Exception in acceptClients");
-                }
+    public void removeClient(Session session) {
+        synchronized (lock_clients) {
+            if(session.isOpen()) {
+                session.close();
             }
-            // Hard shutdown. System terminating.
-            executor.shutdownNow();
+            connectedClients.remove(session);
+            debugLog("Connected clients", String.valueOf(connectedClients.size()));
+        }
+    }
+
+    // ========================================= CLIENT REQUESTS ==================================================
+
+    // Called from WebSocket implementation class @OnWebSocketMessage
+    public void addClientRequest(Session session, String request) {
+        synchronized (lock_clients) {
+            debugLog("Request from client", getIP(session), request);
+            try {
+                if (connectedClients.get(session).loggedIn) {
+                    // Add request to server
+                    ClientRequest newRequest = new ClientRequest(connectedClients.get(session).sessionID, request);
+                    Server.getInstance().clientRequests.put(newRequest);
+                } else {
+                    clientLogin(session, request);
+                }
+            } catch (Exception e) {
+                debugLog("Unable to handle request", getIP(session), request);
+            }
         }
     }
 
     // ========================================== CLIENT LOGIN ===================================================
 
     // Process client login requests: Called from ClientThread before gaining access to server features.
-    public void login(int threadID, String ip, BlockingQueue<String> outputQueue, String loginRequest) throws Exception {
+    private void clientLogin(Session session, String loginRequest) {
         synchronized (lock_login) {
             try {
-
-                //Server.getInstance().debugLog("Client connection request", loginRequest);
 
                 String[] commands = loginRequest.split("::");
 
                 switch (commands[0]) {
                     case "101": // Manual user login (Android or browser)
-                        manualUserLogin(ip, outputQueue, threadID, commands);
+                        manualUserLogin(session, commands);
                         break;
                     case "103": // Automatic user login (Android or browser)
-                        automaticUserLogin(ip, outputQueue, threadID, commands);
+                        automaticUserLogin(session, commands);
                         break;
                     case "120": // Hub login
-                        hubLogin(ip, outputQueue, threadID, commands);
+                        hubLogin(session, commands);
                         break;
                     default:
                         throw new Exception("Invalid login format");
                 }
             } catch (Exception e) {
-                debugLog("Invalid login format", threadID, ip);
-                outputQueue.put("901::".concat(e.getMessage()));
-                outputQueue.put("exit");
+                debugLog("Failed login", getIP(session), e.getMessage());
+                // Pass custom exception msg. E.g. from DB_Clients
+                writeToClient(session, "901::".concat(e.getMessage()));
+                // session.close();
+                removeClient(session);
             }
         }
     }
 
     // #101
-    private void manualUserLogin(String ip, BlockingQueue<String> outputQueue, int threadID, String[] loginRequest) throws Exception {
-        try {
-            // Request according to HoSo protocol: #101
-            String nameID = loginRequest[1];
-            String pwd = loginRequest[2];
+    private void manualUserLogin(Session session, String[] loginRequest) throws Exception {
+        // Request according to HoSo protocol: #101
+        String nameID = loginRequest[1];
+        String pwd = loginRequest[2];
 
-            // Generate new session key to use henceforth if this login succeeds.
-            String newSessionKey = generateSessionKey(nameID);
 
-            //Try to log in with nameID and password (throws exception on invalid)
-            JSONObject result = DB_Clients.getInstance().manualUserLogin(nameID, pwd, newSessionKey);
-            int hubID = (Integer) result.get("hubID");
-            boolean admin = (Boolean) result.get("admin");
+        // Generate new session key to use henceforth if this login succeeds.
+        String newSessionKey = generateSessionKey(nameID);
 
-            // If hub not connected: Throws exception + msg: "Hub not connected"
-            //String hubAlias = getHubByHubID(hubID).alias;   --> Uncomment when home server(hubs) are available (or use mock)
-            String hubAlias = "My haaouse"; // REMOVE LATER WHEN ABOVE LINE CAN BE USED = When a hub is connected
+        // encrypt the session key and then send it to the DB
+        /*Optional<String> encSessionKey = Encryption.encrypt(newSessionKey, String.valueOf(generateSalt(2)));
+        if (encSessionKey.isPresent()){
+            theEncSessionKey = String.valueOf(encSessionKey);
+            System.out.println(theEncSessionKey + "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
+        }*/
 
-            // Create valid user instance
-            Client_User validClient = new Client_User(hubID, ip, outputQueue, nameID, admin);
+        //Try to log in with nameID and password (throws exception on invalid)
+        JSONObject result = clientDB.manualUserLogin(nameID, pwd, theEncSessionKey);
+        int hubID = (Integer) result.get("hubId");
+        boolean admin = (Boolean) result.get("isAdmin");
 
-            // Add user to register of connected clients
-            addConnectedUser(threadID, validClient);
 
-            debugLog(String.format("%s (%s)", "Client logged in", nameID), threadID, ip);
+        String hubAlias = getHubByHubID(hubID).alias;
 
-            // Response according to HoSo protocol #102
-            String loginConfirmation = String.format("102::%s::%s::%s::%s", nameID, admin, hubAlias, newSessionKey);
-            outputQueue.put(loginConfirmation);
+        // If hub not connected: Throws exception + msg: "Hub not connected"
+        //String hubAlias = getHubByHubID(hubID).alias;   --> Uncomment when home server(hubs) are available (or use mock)
 
-            // Request all gadgets on behalf of the client
-            String request = String.format("%s::%s", "302", threadID);
-            ClientRequest requestAllGadgets = new ClientRequest(threadID, request);
-            Server.getInstance().clientRequests.put(requestAllGadgets);
-        } catch (Exception e) {
-            // Pass custom exception msg from DB_Clients to client
-            String clientOutput = String.format("901::%s", e.getMessage());
-            outputQueue.put(clientOutput);
-            // Terminate ClientThread
-            outputQueue.put("exit");
+        // Create valid user instance
+        Client_User validClient = new Client_User(hubID, nameID, admin);
 
-            debugLog("Client failed to login", threadID, ip, clientOutput);
-        }
+        // Overwrite the Client mapped to the session, with a specialized and logged in:
+        connectedClients.put(session, validClient);
+
+        debugLog(String.format("%s (%s)", "Client logged in", nameID), validClient.sessionID, getIP(session));
+
+        // Response according to HoSo protocol #102
+        String loginConfirmation = String.format("102::%s::%s::%s::%s", nameID, admin, hubAlias, newSessionKey);
+        writeToClient(session, loginConfirmation);
+
+        // Request all gadgets on behalf of the client
+        String request = String.format("%s::%s", "302", validClient.sessionID);
+        ClientRequest requestAllGadgets = new ClientRequest(validClient.sessionID, request);
+        Server.getInstance().clientRequests.put(requestAllGadgets);
     }
 
     // #103
-    private void automaticUserLogin(String ip, BlockingQueue<String> outputQueue, int threadID, String[] loginRequest) throws Exception {
-        try {
-            //TODO: Implement automatic login
-            /**
-             * Similar to manualUserLogin, except:
-             * - Login credentials from client is: nameID and sessionKey
-             * - No new sessionKey is stored in DB, or returned to client
-             * - Response to client upon successful login: #104
-             */
+    private void automaticUserLogin(Session session, String[] loginRequest) throws Exception {
+        //TODO: Implement automatic login
+        /**
+         * Similar to manualUserLogin, except:
+         * - Login credentials from client is: nameID and sessionKey
+         * - No new sessionKey is stored in DB, or returned to client
+         * - Response to client upon successful login: #104
+         */
+        // Request according to HoSo protocol: #103
+        String nameID = loginRequest[1];
+        String sessionKey = loginRequest[2];
 
-        } catch (Exception e) {
-            // Pass custom exception msg from DB_Clients to client
-        }
+
+        //Optional<String> validEncSessionKey = Optional.of(Encryption.verifyValue(sessionKey, theEncSessionKey, String.valueOf(generateSalt(2))));
+        //System.out.println(validEncSessionKey.toString()+"<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< valid");
+
+        JSONObject result = clientDB.automaticUserLogin(nameID,sessionKey);
+        int hubId = (Integer) result.get("hubId");
+        boolean isAdmin = (Boolean) result.get("isAdmin");
+
+        String hubAlias = getHubByHubID(hubId).alias;
+
+        Client_User validClient = new Client_User(hubId, nameID, isAdmin);
+        connectedClients.put(session, validClient);
+
+        debugLog(String.format("%s (%s)", "Client logged in", nameID), validClient.sessionID, getIP(session));
+
+        // Response according to HoSo protocol #104
+        String responseMsg = "Successful login";
+        String loginConfirmation = String.format("104::%s",responseMsg);
+        writeToClient(session, loginConfirmation);
+
+        // Request all gadgets on behalf of the client
+        String request = String.format("%s::%s", "302", validClient.sessionID);
+        ClientRequest requestAllGadgets = new ClientRequest(validClient.sessionID, request);
+        Server.getInstance().clientRequests.put(requestAllGadgets);
+
     }
 
     // #120
-    private void hubLogin(String ip, BlockingQueue<String> outputQueue, int threadID, String[] loginRequest) throws Exception {
+    private void hubLogin(Session session, String[] loginRequest) throws Exception {
         //TODO: Implement hub login
         /**
          * - DB method only returns true/false (no data in case of success, and no exception in case of failure)
@@ -242,6 +259,21 @@ public class ClientHandler {
          * - If not successful login:
          *   - Same as with failed userLogin
          */
+        int hubId = Integer.parseInt(loginRequest[1]);
+        String hubPass = loginRequest[2];
+        String hubAlas = loginRequest[3];
+
+        clientDB.hubLogin(hubId,hubPass);
+
+        Client_Hub validHub = new Client_Hub(hubId,hubAlas);
+        connectedClients.put(session,validHub);
+        debugLog(String.format("%s (%s)", "Hub logged in", hubId), validHub.sessionID, getIP(session));
+
+        // response
+        String msgToHub = "Successful login";
+        String hubLoginConfirmation = String.format("121::%s", msgToHub);
+        writeToClient(session,hubLoginConfirmation);
+
     }
 
     private String generateSessionKey(String userName) throws Exception {
@@ -264,79 +296,42 @@ public class ClientHandler {
 
     //TODO: Maybe add a method to hash passwords and sessionKeys before they are stored to DB.
 
-    // ========================================== MANAGE CLIENTS ====================================================
+    // ============================================ UTILITIES =======================================================
 
-    // Called upon successful user login
-    public void addConnectedUser(int threadID, Client_User client) {
-        synchronized (lock_connectedUsers) {
-            connectedUsers.put(threadID, client);
-            debugLog("Users logged in", String.valueOf(connectedUsers.size()));
-        }
-    }
+    private Client_Hub getHubByHubID(int hubID) throws Exception {
 
-    // Called upon successful hub login
-    public void addConnectedHub(int threadID, Client_Hub client) {
-        synchronized (lock_connectedUsers) {
-            connectedHubs.put(threadID, client);
-        }
-    }
-
-    // Called from ClientThread when a ClientThread is terminating.
-    public void removeConnectedClient(int threadID) throws Exception {
-        synchronized (lock_connectedUsers) {
-            if (connectedUsers.containsKey(threadID)) {
-                connectedUsers.remove(threadID);
-                debugLog("Users logged in", String.valueOf(connectedUsers.size()));
-            } else {
-                synchronized (lock_connectedHubs) {
-                    if (connectedHubs.containsKey(threadID)) {
-                        connectedHubs.remove(threadID);
-                        debugLog("Hubs logged in", String.valueOf(connectedUsers.size()));
-                    }
-                }
-            }
-        }
-    }
-
-    public Client_User getUser(int threadID) throws Exception {
-        synchronized (lock_connectedUsers) {
-            return connectedUsers.get(threadID);
-        }
-    }
-
-    //TODO: ONLY USED BY MOCK CLASS: Remove later.
-    public Integer[] getAllUserThreadIDs() throws Exception {
-        synchronized (lock_connectedUsers) {
-            return connectedUsers.keySet().toArray(new Integer[connectedUsers.size()]);
-        }
-    }
-
-    public Client_Hub getHub(int threadID) throws Exception {
-        synchronized (lock_connectedUsers) {
-            return connectedHubs.get(threadID);
-        }
-    }
-
-    public Client_Hub getHubByHubID(int hubID) throws Exception {
-        synchronized (lock_connectedHubs) {
-            for (int thread : connectedHubs.keySet()) {
-                if (connectedHubs.get(thread).hubID == hubID) {
-                    return connectedHubs.get(thread);
-                }
-            }
+        if (hubID == 0){
             throw new Exception("Hub not connected");
         }
+        Client_Hub client_hub = new Client_Hub(hubID,"My haaouse");
+
+        return client_hub;
     }
 
-    // Return client that is either a Client_Hub or Client_User
-    public Client getGenericClient(int threadID) throws Exception {
-        synchronized (lock_connectedUsers) {
-            if (connectedUsers.containsKey(threadID)) {
-                return connectedUsers.get(threadID);
-            } else {
-                synchronized (lock_connectedHubs) {
-                    return connectedHubs.get(threadID);
+    // For logging purposes
+    private String getIP (Session session) {
+        return session.getRemoteAddress().getAddress().toString().substring(1);
+    }
+
+    private Session getSession (int sessionID) throws Exception {
+        synchronized (lock_clients) {
+            for(Session session : connectedClients.keySet()) {
+                if(connectedClients.get(session).sessionID == sessionID) {
+                    return session;
                 }
+            }
+        }
+        throw new Exception("No session match");
+    }
+
+    //TODO: ONLY USED BY MOCK. REMOVE LATER
+    public int getSessionID() {
+        synchronized (lock_clients) {
+            if (connectedClients.size() == 0) {
+                return -1;
+            } else {
+                // Find session id of any logged in client.
+                return connectedClients.get(connectedClients.entrySet().iterator().next().getKey()).sessionID;
             }
         }
     }
@@ -344,49 +339,54 @@ public class ClientHandler {
     // ======================================== OUTPUT TO CLIENT(S) =================================================
     // Used by Server class to output data to connected clients
 
-    public void outputToUsers(String msg, int threadID, boolean onlyToIndividual, boolean onlyToAdmin) {
-        synchronized (lock_connectedUsers) {
-            if (connectedUsers.containsKey(threadID)) {
+    public void outputToClients(int sessionID, boolean toHub, boolean onlyToIndividual, boolean onlyToAdmin, String msg) {
+        synchronized (lock_clients) {
+            try {
                 if (onlyToIndividual) {
-                    // Msg to individual user
-                    if (!onlyToAdmin || connectedUsers.get(threadID).isAdmin()) {
-                        connectedUsers.get(threadID).addToOutputQueue(msg);
+                    Session targetSession = getSession(sessionID);
+                    Client targetClient = connectedClients.get(targetSession);
+                    // check if user is slogged in
+                    if (targetClient.loggedIn) {
+                        // check if target is a hub...
+                        if ((toHub && targetClient instanceof Client_Hub) ||
+                                // ... or target is a user, and verify admin rights in relation to the output request
+                                (!toHub && targetClient instanceof Client_User && (!onlyToAdmin || ((Client_User) targetClient).isAdmin()))) {
+                            // output to client
+                            writeToClient(targetSession, msg);
+                        }
                     }
-
                 } else {
-                    // Msg to all users belonging to the same hub
-                    int hubID = connectedUsers.get(threadID).hubID;
-                    for (int thread : connectedUsers.keySet()) {
-                        Client_User client = connectedUsers.get(thread);
-                        if (client.hubID == hubID && (!onlyToAdmin || client.isAdmin())) {
-                            client.addToOutputQueue(msg);
+                    // Msg to all users belonging to the same hub (note: this is not output to hubs)
+                    int hubID = connectedClients.get(getSession(sessionID)).hubID;
+                    for (Session session : connectedClients.keySet()) {
+                        Client targetClient = connectedClients.get(session);
+                        if (targetClient.loggedIn && targetClient.hubID == hubID && targetClient instanceof Client_User) {
+                            if (!onlyToAdmin || ((Client_User) targetClient).isAdmin()) {
+                                writeToClient(session, msg);
+                            }
                         }
                     }
                 }
+            } catch (Exception e) {
+                debugLog(e.getMessage(), sessionID);
             }
         }
     }
 
-    public void outputToHub(String msg, int threadID) {
-        synchronized (lock_connectedHubs) {
-            connectedHubs.get(threadID).addToOutputQueue(msg);
-        }
-    }
-
-    // When client specialization is unknown, e.g. when passing an exception msg.
-    public void outputToGenericClient(String msg, int threadID) {
-        synchronized (lock_connectedUsers) {
-            if (connectedUsers.containsKey(threadID)) {
-                connectedUsers.get(threadID).addToOutputQueue(msg);
-            } else {
-                synchronized (lock_connectedHubs) {
-                    connectedHubs.get(threadID).addToOutputQueue(msg);
+    private void writeToClient(Session session, String msg) {
+        synchronized (lock_clients) {
+            if (session.isOpen()) {
+                try {
+                    debugLog("Output to client", getIP(session), msg);
+                    session.getRemote().sendString(msg);
+                } catch (IOException e) {
+                    debugLog("Unable to write to client", getIP(session), msg);
                 }
+            } else {
+                debugLog("Client session closed", getIP(session));
             }
         }
-
     }
-
     // ===================================== DEBUG LOGS =======================================================
 
 

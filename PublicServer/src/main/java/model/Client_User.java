@@ -1,6 +1,5 @@
-package model;
+package main.java.model;
 
-import java.util.concurrent.BlockingQueue;
 
 public class Client_User extends Client {
     /**
@@ -16,10 +15,11 @@ public class Client_User extends Client {
     private final boolean admin;
 
 
-    public Client_User(int hubID, String ip, BlockingQueue<String> outputQueue, String nameID, boolean admin) {
-        super(hubID, ip, outputQueue);
+    public Client_User(int hubID, String nameID, boolean admin) {
+        super(hubID);
         this.nameID = nameID;
         this.admin = admin;
+        loggedIn = true; // logged in for specialized client
     }
 
     public String getNameID() {
