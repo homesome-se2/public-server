@@ -4,7 +4,7 @@
   "serverThreadPool": 10,
   "dbIP": "localhost",
   "dbPort": "3306",
-  "dbDatabase": "XXXXXX",
-  "dbAccount": "XXXXXX",
-  "dbPassword": "XXXXXX"
+  "dbDatabase": "hoso",
+  "dbAccount": "root",
+  "dbPassword": "root"
 }

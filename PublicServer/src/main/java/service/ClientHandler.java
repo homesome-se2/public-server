@@ -19,6 +19,9 @@ import java.security.MessageDigest;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Optional;
+
+import static main.java.service.Encryption.generateSalt;
 
 
 public class ClientHandler {
@@ -33,10 +36,12 @@ public class ClientHandler {
 
     private HashMap<Session, Client> connectedClients;
 
+
     private int clientLimit;
     private DB_Clients clientDB;
     private final Object lock_clients;
     private final Object lock_login;
+    private String theEncSessionKey = "";
 
 
 
@@ -162,17 +167,27 @@ public class ClientHandler {
         String nameID = loginRequest[1];
         String pwd = loginRequest[2];
 
+
         // Generate new session key to use henceforth if this login succeeds.
         String newSessionKey = generateSessionKey(nameID);
 
+        // encrypt the session key and then send it to the DB
+        /*Optional<String> encSessionKey = Encryption.encrypt(newSessionKey, String.valueOf(generateSalt(2)));
+        if (encSessionKey.isPresent()){
+            theEncSessionKey = String.valueOf(encSessionKey);
+            System.out.println(theEncSessionKey + "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
+        }*/
+
         //Try to log in with nameID and password (throws exception on invalid)
-        JSONObject result = clientDB.manualUserLogin(nameID, pwd, newSessionKey);
-        int hubID = (Integer) result.get("hubID");
-        boolean admin = (Boolean) result.get("admin");
+        JSONObject result = clientDB.manualUserLogin(nameID, pwd, theEncSessionKey);
+        int hubID = (Integer) result.get("hubId");
+        boolean admin = (Boolean) result.get("isAdmin");
+
+
+        String hubAlias = getHubByHubID(hubID).alias;
 
         // If hub not connected: Throws exception + msg: "Hub not connected"
         //String hubAlias = getHubByHubID(hubID).alias;   --> Uncomment when home server(hubs) are available (or use mock)
-        String hubAlias = "My haaouse"; //TODO: REMOVE LATER WHEN ABOVE LINE CAN BE USED = When a hub is connected
 
         // Create valid user instance
         Client_User validClient = new Client_User(hubID, nameID, admin);
@@ -193,7 +208,6 @@ public class ClientHandler {
     }
 
     // #103
-
     private void automaticUserLogin(Session session, String[] loginRequest) throws Exception {
         //TODO: Implement automatic login
         /**
@@ -202,10 +216,38 @@ public class ClientHandler {
          * - No new sessionKey is stored in DB, or returned to client
          * - Response to client upon successful login: #104
          */
+        // Request according to HoSo protocol: #103
+        String nameID = loginRequest[1];
+        String sessionKey = loginRequest[2];
+
+
+        //Optional<String> validEncSessionKey = Optional.of(Encryption.verifyValue(sessionKey, theEncSessionKey, String.valueOf(generateSalt(2))));
+        //System.out.println(validEncSessionKey.toString()+"<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< valid");
+
+        JSONObject result = clientDB.automaticUserLogin(nameID,sessionKey);
+        int hubId = (Integer) result.get("hubId");
+        boolean isAdmin = (Boolean) result.get("isAdmin");
+
+        String hubAlias = getHubByHubID(hubId).alias;
+
+        Client_User validClient = new Client_User(hubId, nameID, isAdmin);
+        connectedClients.put(session, validClient);
+
+        debugLog(String.format("%s (%s)", "Client logged in", nameID), validClient.sessionID, getIP(session));
+
+        // Response according to HoSo protocol #104
+        String responseMsg = "Successful login";
+        String loginConfirmation = String.format("104::%s",responseMsg);
+        writeToClient(session, loginConfirmation);
+
+        // Request all gadgets on behalf of the client
+        String request = String.format("%s::%s", "302", validClient.sessionID);
+        ClientRequest requestAllGadgets = new ClientRequest(validClient.sessionID, request);
+        Server.getInstance().clientRequests.put(requestAllGadgets);
+
     }
 
     // #120
-
     private void hubLogin(Session session, String[] loginRequest) throws Exception {
         //TODO: Implement hub login
         /**
@@ -217,6 +259,21 @@ public class ClientHandler {
          * - If not successful login:
          *   - Same as with failed userLogin
          */
+        int hubId = Integer.parseInt(loginRequest[1]);
+        String hubPass = loginRequest[2];
+        String hubAlas = loginRequest[3];
+
+        clientDB.hubLogin(hubId,hubPass);
+
+        Client_Hub validHub = new Client_Hub(hubId,hubAlas);
+        connectedClients.put(session,validHub);
+        debugLog(String.format("%s (%s)", "Hub logged in", hubId), validHub.sessionID, getIP(session));
+
+        // response
+        String msgToHub = "Successful login";
+        String hubLoginConfirmation = String.format("121::%s", msgToHub);
+        writeToClient(session,hubLoginConfirmation);
+
     }
 
     private String generateSessionKey(String userName) throws Exception {
@@ -240,6 +297,16 @@ public class ClientHandler {
     //TODO: Maybe add a method to hash passwords and sessionKeys before they are stored to DB.
 
     // ============================================ UTILITIES =======================================================
+
+    private Client_Hub getHubByHubID(int hubID) throws Exception {
+
+        if (hubID == 0){
+            throw new Exception("Hub not connected");
+        }
+        Client_Hub client_hub = new Client_Hub(hubID,"My haaouse");
+
+        return client_hub;
+    }
 
     // For logging purposes
     private String getIP (Session session) {

@@ -4,7 +4,7 @@ import main.java.model.ClientRequest;
 import main.java.model.Settings;
 
 
-import temp_mock.Mock_Interaction;
+//import temp_mock.Mock_Interaction;
 
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -23,7 +23,7 @@ public class Server {
     private static Server instance = null;
 
     // Temporary mock
-    private Mock_Interaction mock; // REMOVE LATER
+    //private Mock_Interaction mock; // REMOVE LATER
 
     public static Server getInstance() {
         if (instance == null) {
@@ -35,7 +35,7 @@ public class Server {
     private Server() {
         clientRequests = new ArrayBlockingQueue<>(10);
         terminateServer = false;
-        mock = new Mock_Interaction();
+        //mock = new Mock_Interaction();
         lock_closeServer = new Object();
         lock_debugLogs = new Object();
     }
@@ -46,7 +46,7 @@ public class Server {
             // Read in settings from JSON
             settings = new Settings();
             settings.readInSettings();
-            mock.launch();
+            //mock.launch();
 
             // Launch ClientHandler
             ClientHandler.getInstance().launchWebSocketServer(settings.getServerPort(), settings.getClientLimit());
@@ -63,7 +63,7 @@ public class Server {
         synchronized (lock_closeServer) {
             if (!terminateServer) {
                 terminateServer = true;
-                mock.close();
+              //  mock.close();
                 ClientHandler.getInstance().stopWebSocketServer();
                 System.out.println("HomeSome server shutting down");
             }
@@ -134,7 +134,7 @@ public class Server {
         // It is actually called from ClientHandler, but the request goes to the hub of which the newly logged in client belongs.
         // The msg is forwarded to the target hub as it is (no inspection or appending needed).
 
-        mock.hubReportsAllGadgets(issuinSessionID); // REMOVE LATER
+        //mock.hubReportsAllGadgets(issuinSessionID); // REMOVE LATER
     }
 
     // #303 -> #304
