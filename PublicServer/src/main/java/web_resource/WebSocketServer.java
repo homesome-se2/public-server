@@ -13,7 +13,9 @@ public class WebSocketServer {
     // New client connected to WebSocket server
     @OnWebSocketConnect
     public void onConnect(Session session) throws Exception {
-        session.setIdleTimeout(60*1000); // Server closes session (connection) if idle.
+        //session.setIdleTimeout(60*1000); // Server closes session (connection) if idle.
+        System.out.println("WE R HERE on connect>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
+
         ClientHandler.getInstance().addClient(session);
     }
 
@@ -26,6 +28,7 @@ public class WebSocketServer {
     // Message from client
     @OnWebSocketMessage
     public void onMessage(Session session, String message) throws Exception {
+        System.out.println("WE R HERE>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
         ClientHandler.getInstance().addClientRequest(session, message);
     }
 }

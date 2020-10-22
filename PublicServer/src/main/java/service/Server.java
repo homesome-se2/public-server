@@ -1,7 +1,10 @@
 package main.java.service;
 
+import main.java.DAO.DB_Clients;
+import main.java.model.Client;
 import main.java.model.ClientRequest;
 import main.java.model.Settings;
+import main.java.temp_mock.Mock_Interaction;
 
 
 //import temp_mock.Mock_Interaction;
@@ -14,6 +17,7 @@ public class Server {
     public BlockingQueue<ClientRequest> clientRequests;
     public volatile Settings settings;
     public volatile boolean terminateServer;
+    private DB_Clients clientDB;
 
     // Lock objects
     private final Object lock_closeServer;
@@ -23,7 +27,7 @@ public class Server {
     private static Server instance = null;
 
     // Temporary mock
-    //private Mock_Interaction mock; // REMOVE LATER
+    private Mock_Interaction mock; // REMOVE LATER
 
     public static Server getInstance() {
         if (instance == null) {
@@ -35,7 +39,7 @@ public class Server {
     private Server() {
         clientRequests = new ArrayBlockingQueue<>(10);
         terminateServer = false;
-        //mock = new Mock_Interaction();
+        mock = new Mock_Interaction();
         lock_closeServer = new Object();
         lock_debugLogs = new Object();
     }
@@ -46,7 +50,7 @@ public class Server {
             // Read in settings from JSON
             settings = new Settings();
             settings.readInSettings();
-            //mock.launch();
+            mock.launch();
 
             // Launch ClientHandler
             ClientHandler.getInstance().launchWebSocketServer(settings.getServerPort(), settings.getClientLimit());
@@ -63,7 +67,7 @@ public class Server {
         synchronized (lock_closeServer) {
             if (!terminateServer) {
                 terminateServer = true;
-              //  mock.close();
+                //  mock.close();
                 ClientHandler.getInstance().stopWebSocketServer();
                 System.out.println("HomeSome server shutting down");
             }
@@ -84,19 +88,25 @@ public class Server {
                     case "105":
                         clientLogout(commands, sessionID);
                     case "302":
-                        requestAllHubGadgets(commands, sessionID);
+                        requestAllHubGadgets(commands, sessionID); //302::hub number, valid client session ID
                         break;
                     case "303":
                         receiveAllHubGadgets(commands, sessionID);
                         break;
                     case "311":
-                        requestGadgetStateChange(commands,sessionID);
+                        requestGadgetStateChange(commands, sessionID);
                         break;
                     case "315":
                         receiveGadgetStateChange(commands, sessionID);
                         break;
+                    case "370":
+                        requestGadgetGroups(sessionID);
+                        break;
+                    case "372":
+                        receiveGadgetGroups(commands);
+                        break;
                     default:
-                        ClientHandler.getInstance().outputToClients(sessionID,false,true,false,"901::Invalid format");
+                        ClientHandler.getInstance().outputToClients(sessionID, false, true, false, "901::Invalid format");
                         break;
                 }
             } catch (InterruptedException e) {
@@ -112,7 +122,7 @@ public class Server {
 
     /**
      * Notation above methods for forwarding scheme:
-     *
+     * <p>
      * #303 -> #304  : The incoming request is a #303 request, and the forwarding request should be a #304 command.
      * #302 -> #302  : The forwarding is the same command (#302 -> #302)
      * #105 -> X     : No forwarding to be done.
@@ -124,6 +134,9 @@ public class Server {
         // User client (Android/browser) has manually pressed the logout button.
         // Remove/overwrite the client's sessionKey in DB. This would force a manual login next time client wants to connect.
         // This method returns nothing (possibly just an exception msg '901::xxxx' if something goes wrong).
+        // how should I get name of the cient in order to delete his session key ???
+        //clientDB.manualUserLogout();
+
     }
 
 
@@ -134,17 +147,25 @@ public class Server {
         // It is actually called from ClientHandler, but the request goes to the hub of which the newly logged in client belongs.
         // The msg is forwarded to the target hub as it is (no inspection or appending needed).
 
-        //mock.hubReportsAllGadgets(issuinSessionID); // REMOVE LATER
+        //302::hub number, valid client session ID
+        // getting the session Id for the client requesting the gadgets and then forward it to the associated hub
+        int hubNumber = Integer.parseInt(commands[1]); // the hub number
+
+        String forwardSessionId = String.format("%s::%s", "302", issuinSessionID);
+        // how to refer to hub that associated to that client
+        mock.hubReportsAllGadgets(issuinSessionID);
+       // ClientHandler.getInstance().outputToClients(hubNumber,true,true,false,forwardSessionId);
     }
 
     // #303 -> #304
     private void receiveAllHubGadgets(String[] commands, int issuinSessionID) throws Exception {
         int targetSessionID = Integer.parseInt(commands[1]);
+        int numberOfGadgets = Integer.parseInt(commands[2]);
 
         // Encapsulate (build) new command from the decapsulated incoming command (according to protocol)
         String forwardGadgetsMsg = "304";
-        for (int command = 2 ; command < commands.length ; command++) {
-            forwardGadgetsMsg = String.format("%s::%s", forwardGadgetsMsg, commands[command]);
+        for (int command = 3; command < commands.length; command++) {
+            forwardGadgetsMsg = String.format("%s::%s::%s", forwardGadgetsMsg, numberOfGadgets, commands[command]);
         }
         // Send to individual client
         ClientHandler.getInstance().outputToClients(targetSessionID, false, true, false, forwardGadgetsMsg);
@@ -166,19 +187,40 @@ public class Server {
         String newState = commands[2];
         String forwardMsg = String.format("%s::%s::%s", "316", gadgetID, newState);
         // Send to all users associated with that hub
-        ClientHandler.getInstance().outputToClients(issuingSessionID,false, false, false, forwardMsg);
+        ClientHandler.getInstance().outputToClients(issuingSessionID, false, false, false, forwardMsg);
+    }
+
+    // #370 -> #371
+    private void requestGadgetGroups(int issuingSessionID) {
+        String forwardRequest = String.format("%s::%s", "371", issuingSessionID);
+        // Send request to same hub as client with sessionID "issuingSessionID is associated with.
+        //TODO: Implement
+
+        //mock.requestGadgetGroups(issuingSessionID); //TODO: REMOVE LATER
+    }
+
+    // #372 -> #373
+    private void receiveGadgetGroups(String[] commands) throws Exception {
+        int targetSessionID = Integer.parseInt(commands[1]);
+        String forwardGroups = "373";
+        // Encapsulate (build) new command from the decapsulated incoming command (according to protocol)
+        for (int command = 2; command < commands.length; command++) {
+            forwardGroups = String.format("%s::%s", forwardGroups, commands[command]);
+        }
+        // Send to individual client
+        ClientHandler.getInstance().outputToClients(targetSessionID, false, true, false, forwardGroups);
     }
 
     // ===================================== DEBUG LOGS =======================================================
 
     public void debugLog(String log, String... data) {
         synchronized (lock_debugLogs) {
-            if(settings.isDebugMode()) {
+            if (settings.isDebugMode()) {
                 String logData = "";
-                if(data.length > 0) {
+                if (data.length > 0) {
                     logData = String.format("[%s]", data[0]);
-                    if(data.length > 1 ) {
-                        for(int i = 1 ; i < data.length; i++) {
+                    if (data.length > 1) {
+                        for (int i = 1; i < data.length; i++) {
                             logData = String.format("%s %s", logData, data[i]);
                         }
                     }
@@ -191,12 +233,12 @@ public class Server {
 
     public void debugLog(String log, int threadID, String... data) {
         synchronized (lock_debugLogs) {
-            if(settings.isDebugMode()) {
+            if (settings.isDebugMode()) {
                 String logData = "";
-                if(data.length > 0) {
+                if (data.length > 0) {
                     logData = String.format("[%s] (Thread %s)", data[0], threadID);
-                    if(data.length > 1 ) {
-                        for(int i = 1 ; i < data.length; i++) {
+                    if (data.length > 1) {
+                        for (int i = 1; i < data.length; i++) {
                             logData = String.format("%s %s", logData, data[i]);
                         }
                     }

@@ -12,8 +12,8 @@ import java.util.Optional;
 public class Encryption {
 
     private static final int ITERATIONS = 65536;
-    private static final int KEY_LENGTH = 128;
-    private static final String ALGORITHM = "PBKDF2WithHmacSHA512";
+    private static final int KEY_LENGTH = 160;
+    private static final String ALGORITHM = "PBKDF2WithHmacSHA1";
     private static final SecureRandom RAND = new SecureRandom();
 
     public Encryption() {
@@ -56,13 +56,12 @@ public class Encryption {
     }
 
     //Testing the encrypted value
-    public static String verifyValue(String value, String key, String salt) throws Exception {
-        boolean check = true;
+    public static boolean verifyValue(String value, String key, String salt) throws Exception {
+
         Optional<String> optEncrypted = encrypt(value, salt);
         if (!optEncrypted.isPresent()) {
-            check = false;
-            return String.valueOf(check);
-        }
-            return String.valueOf(optEncrypted.get().equals(key));
+            return false;
+        }else
+        return optEncrypted.get().equals(key);
     }
 }
