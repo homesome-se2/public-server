@@ -207,6 +207,27 @@ public class DB_Clients {
         return check;
     }
 
+    public void manualUserLogout(String nameId, String sessionKey)throws Exception{
+        connect();
+        int result = 0;
+
+        try {
+            preparedStatement = connection.prepareStatement("UPDATE hoso.client_user SET sessionKey = ? WHERE nameId = ?;");
+            preparedStatement.setString(1, sessionKey);
+            preparedStatement.setString(2, nameId);
+            result = preparedStatement.executeUpdate();
+            if (result != 1) {
+                throw new Exception("Server unable to update session key. Code 1");
+            }
+        } catch (SQLException e) {
+            throw new Exception("Error on SQL query. Code 1");
+        } catch (NullPointerException e) {
+            throw new Exception("NullPointer Exception");
+        } finally {
+            closeConnection();
+        }
+    }
+
     /**
      * ========================== EXAMPLE METHOD FOR manualUserLogin() ===============================================================
      *

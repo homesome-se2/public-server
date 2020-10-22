@@ -32,6 +32,7 @@ public class Mock_Interaction {
             public void run() {
                 try {
                     hubReportsGadgetState();
+                    //hubReportsAllGadgets();
                 } catch (Exception e) {
                     close();
                 }
@@ -82,6 +83,26 @@ public class Mock_Interaction {
                 ClientHandler.getInstance().outputToClients(availableSessionID, false, false, false, gadgetUpdate);
             }
 
+        }
+    }
+
+    public void requestGadgetGroups (int sessionIdIssuingClient) {
+        // Reports 3 groups:
+        // - All lamps   [1, 4]
+        // - All gadgets [1, 2, 3, 4]
+        // - Kitchen     [3, 4]
+        String protocolString =
+                "372::" + sessionIdIssuingClient +
+                        "::All Lamps:1:4" +
+                        "::All Gadgets:1:2:3:4" +
+                        "::Kitchen:3:4";
+
+        // Add as a request to the server
+        ClientRequest hubRequest = new ClientRequest(1, protocolString);
+        try {
+            Server.getInstance().clientRequests.put(hubRequest);
+        } catch (InterruptedException e) {
+            // Ignore
         }
     }
 }

@@ -34,15 +34,14 @@ public class ClientHandler {
      * - The only class accessing the database class DB_Clients.
      */
 
-    private HashMap<Session, Client> connectedClients;
+    public static HashMap<Session, Client> connectedClients;
 
 
     private int clientLimit;
     private DB_Clients clientDB;
     private final Object lock_clients;
     private final Object lock_login;
-    private String theEncSessionKey = "";
-
+    private String encryptedKey;
 
 
     // Make Singleton
@@ -68,6 +67,7 @@ public class ClientHandler {
         // Create web socket listening on a path, and being implemented by a class.
         Spark.webSocket("/homesome", WebSocketServer.class);
         Spark.port(serverTcpPort);
+        Spark.threadPool(clientLimit);
         Spark.init();
         // Browser test: http://localhost:tcpPort/
         // If no web page is provided, should say "404 Error, com.homesome.service powered by Jetty"
@@ -86,15 +86,11 @@ public class ClientHandler {
     public void addClient(Session session) {
         synchronized (lock_clients) {
 
-            if (connectedClients.size() <= clientLimit) {
-                Client newClient = new Client();
-                connectedClients.put(session, newClient);
-            } else {
-                System.out.println("Client limit reached.");
-                if(session.isOpen()) {
-                    session.close();
-                }
-            }
+            // Default idle threshold for not logged in clients
+            session.setIdleTimeout(8000);
+            //Map session to new generic client instance
+            Client newClient = new Client();
+            connectedClients.put(session,newClient);
             debugLog("Connected clients", String.valueOf(connectedClients.size()));
         }
     }
@@ -117,10 +113,16 @@ public class ClientHandler {
             debugLog("Request from client", getIP(session), request);
             try {
                 if (connectedClients.get(session).loggedIn) {
-                    // Add request to server
-                    ClientRequest newRequest = new ClientRequest(connectedClients.get(session).sessionID, request);
-                    Server.getInstance().clientRequests.put(newRequest);
+                    if (request.toLowerCase().equals("ping")){
+                        // Ping. Resets idle time
+                        debugLog("Ping from client",getIP(session));
+                    } else {
+                        // Add request to server
+                        ClientRequest newRequest = new ClientRequest(connectedClients.get(session).sessionID, request);
+                        Server.getInstance().clientRequests.put(newRequest);
+                    }
                 } else {
+                    session.setIdleTimeout(60 *1000); // Increase idle threshold
                     clientLogin(session, request);
                 }
             } catch (Exception e) {
@@ -141,6 +143,7 @@ public class ClientHandler {
                 switch (commands[0]) {
                     case "101": // Manual user login (Android or browser)
                         manualUserLogin(session, commands);
+
                         break;
                     case "103": // Automatic user login (Android or browser)
                         automaticUserLogin(session, commands);
@@ -171,23 +174,18 @@ public class ClientHandler {
         // Generate new session key to use henceforth if this login succeeds.
         String newSessionKey = generateSessionKey(nameID);
 
-        // encrypt the session key and then send it to the DB
-        /*Optional<String> encSessionKey = Encryption.encrypt(newSessionKey, String.valueOf(generateSalt(2)));
-        if (encSessionKey.isPresent()){
-            theEncSessionKey = String.valueOf(encSessionKey);
-            System.out.println(theEncSessionKey + "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
-        }*/
+        // encrypt the sessionKey and then send the generated encrypted key to the DB
+        // encryptedKey = String.valueOf(Encryption.encrypt(newSessionKey, String.valueOf(generateSalt(160))));
+        //System.out.println(newSessionKey+"<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< new");
+
 
         //Try to log in with nameID and password (throws exception on invalid)
-        JSONObject result = clientDB.manualUserLogin(nameID, pwd, theEncSessionKey);
+        JSONObject result = clientDB.manualUserLogin(nameID, pwd, newSessionKey);
         int hubID = (Integer) result.get("hubId");
         boolean admin = (Boolean) result.get("isAdmin");
 
-
+        // check the hub if it's connected, get the hub alias, if not throw an exception
         String hubAlias = getHubByHubID(hubID).alias;
-
-        // If hub not connected: Throws exception + msg: "Hub not connected"
-        //String hubAlias = getHubByHubID(hubID).alias;   --> Uncomment when home server(hubs) are available (or use mock)
 
         // Create valid user instance
         Client_User validClient = new Client_User(hubID, nameID, admin);
@@ -202,8 +200,8 @@ public class ClientHandler {
         writeToClient(session, loginConfirmation);
 
         // Request all gadgets on behalf of the client
-        String request = String.format("%s::%s", "302", validClient.sessionID);
-        ClientRequest requestAllGadgets = new ClientRequest(validClient.sessionID, request);
+        String request = String.format("%s::%s", "302", validClient.hubID); // requesting the hub number
+        ClientRequest requestAllGadgets = new ClientRequest(validClient.sessionID, request); // session id =1,
         Server.getInstance().clientRequests.put(requestAllGadgets);
     }
 
@@ -220,31 +218,37 @@ public class ClientHandler {
         String nameID = loginRequest[1];
         String sessionKey = loginRequest[2];
 
+        // Here it should verify the entered session key with one that has been encrypted using the same encrypted key
 
-        //Optional<String> validEncSessionKey = Optional.of(Encryption.verifyValue(sessionKey, theEncSessionKey, String.valueOf(generateSalt(2))));
-        //System.out.println(validEncSessionKey.toString()+"<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< valid");
+        //boolean check = Encryption.verifyValue(sessionKey,encryptedKey, String.valueOf(generateSalt(160)));
+        //System.out.println(encryptedKey+"<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< valid");
+        //System.out.println(check+"<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< valid");
+        //if (check) {
 
-        JSONObject result = clientDB.automaticUserLogin(nameID,sessionKey);
-        int hubId = (Integer) result.get("hubId");
-        boolean isAdmin = (Boolean) result.get("isAdmin");
+            JSONObject result = clientDB.automaticUserLogin(nameID, sessionKey);
+            int hubId = (Integer) result.get("hubId");
+            boolean isAdmin = (Boolean) result.get("isAdmin");
 
-        String hubAlias = getHubByHubID(hubId).alias;
+            // Here it should be checked if the client is connected to its hub
+            String hubAlias = getHubByHubID(hubId).alias;
 
-        Client_User validClient = new Client_User(hubId, nameID, isAdmin);
-        connectedClients.put(session, validClient);
+            Client_User validClient = new Client_User(hubId, nameID, isAdmin);
+            connectedClients.put(session, validClient);
 
-        debugLog(String.format("%s (%s)", "Client logged in", nameID), validClient.sessionID, getIP(session));
+            debugLog(String.format("%s (%s)", "Client logged in", nameID), validClient.sessionID, getIP(session));
 
-        // Response according to HoSo protocol #104
-        String responseMsg = "Successful login";
-        String loginConfirmation = String.format("104::%s",responseMsg);
-        writeToClient(session, loginConfirmation);
+            // Response according to HoSo protocol #104
+            String responseMsg = "Successful login";
+            String loginConfirmation = String.format("104::%s", responseMsg);
+            writeToClient(session, loginConfirmation);
 
-        // Request all gadgets on behalf of the client
-        String request = String.format("%s::%s", "302", validClient.sessionID);
-        ClientRequest requestAllGadgets = new ClientRequest(validClient.sessionID, request);
-        Server.getInstance().clientRequests.put(requestAllGadgets);
-
+            // Request all gadgets on behalf of the client
+            String request = String.format("%s::%s", "302", validClient.sessionID); //302::1
+            ClientRequest requestAllGadgets = new ClientRequest(validClient.sessionID, request);// 1,"302::1"
+            Server.getInstance().clientRequests.put(requestAllGadgets);
+        //}else {
+          //  throw new Exception("Wrong session key! ");
+        //}
     }
 
     // #120
@@ -300,10 +304,10 @@ public class ClientHandler {
 
     private Client_Hub getHubByHubID(int hubID) throws Exception {
 
-        if (hubID == 0){
-            throw new Exception("Hub not connected");
+        if (hubID <= 1){
+            throw new Exception("successfully logged in, BUT NO hub is connected to your username!!");
         }
-        Client_Hub client_hub = new Client_Hub(hubID,"My haaouse");
+        Client_Hub client_hub = new Client_Hub(hubID,"My house");
 
         return client_hub;
     }
