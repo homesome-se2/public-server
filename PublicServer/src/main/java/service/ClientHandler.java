@@ -365,13 +365,11 @@ public class ClientHandler {
 
             try {
                 if (onlyToIndividual) {
-                    System.out.println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>< in here output to clients ");
                     if (toHub) {
                         targetSession = getConnectedHubSessionByHubID(sessionID);// get the hub session
                     } else {
                         targetSession = getSession(sessionID); // get client session here
                     }
-                    System.out.println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>< target session" + targetSession);
                     Client targetClient = connectedClients.get(targetSession);// I will get the whole client object
                     // check if user is slogged in
                     if (targetClient.loggedIn) {
@@ -380,7 +378,6 @@ public class ClientHandler {
                                 // ... or target is a user, and verify admin rights in relation to the output request
                                 (!toHub && targetClient instanceof Client_User && (!onlyToAdmin || ((Client_User) targetClient).isAdmin()))) {
                             // output to client
-                            System.out.println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<< WRITING TO THE HUB ");
                             writeToClient(targetSession, msg);
                         }
                     }
