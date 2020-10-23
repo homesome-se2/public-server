@@ -380,7 +380,6 @@ public class ClientHandler {
                                 // ... or target is a user, and verify admin rights in relation to the output request
                                 (!toHub && targetClient instanceof Client_User && (!onlyToAdmin || ((Client_User) targetClient).isAdmin()))) {
                             // output to client
-                            System.out.println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<< WRITING TO THE HUB ");
                             writeToClient(targetSession, msg);
                         }
                     }
