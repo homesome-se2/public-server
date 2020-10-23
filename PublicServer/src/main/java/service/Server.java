@@ -5,10 +5,12 @@ import main.java.model.Client;
 import main.java.model.ClientRequest;
 import main.java.model.Settings;
 import main.java.temp_mock.Mock_Interaction;
+import org.eclipse.jetty.websocket.api.Session;
 
 
 //import temp_mock.Mock_Interaction;
 
+import java.util.HashMap;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 
@@ -39,6 +41,7 @@ public class Server {
     private Server() {
         clientRequests = new ArrayBlockingQueue<>(10);
         terminateServer = false;
+        //to use the mock hub
         mock = new Mock_Interaction();
         lock_closeServer = new Object();
         lock_debugLogs = new Object();
@@ -54,7 +57,6 @@ public class Server {
 
             // Launch ClientHandler
             ClientHandler.getInstance().launchWebSocketServer(settings.getServerPort(), settings.getClientLimit());
-
             processRequests();
         } catch (Exception e) {
             System.out.println(e.getMessage());
@@ -67,7 +69,8 @@ public class Server {
         synchronized (lock_closeServer) {
             if (!terminateServer) {
                 terminateServer = true;
-                //  mock.close();
+                // terminate connection with the mock hub
+                mock.close();
                 ClientHandler.getInstance().stopWebSocketServer();
                 System.out.println("HomeSome server shutting down");
             }
@@ -141,33 +144,44 @@ public class Server {
 
 
     // #302 -> #302
+    // ps sends 302 to the hub to get all gadgets
     private void requestAllHubGadgets(String[] commands, int issuinSessionID) throws Exception {
-        //TODO: Implement (and remove mock)
-        // This method will be used when a newly logged in user requests all gadget data from its associated hub.
-        // It is actually called from ClientHandler, but the request goes to the hub of which the newly logged in client belongs.
-        // The msg is forwarded to the target hub as it is (no inspection or appending needed).
 
-        //302::hub number, valid client session ID
+        //302::clientSessionID
         // getting the session Id for the client requesting the gadgets and then forward it to the associated hub
-        int hubNumber = Integer.parseInt(commands[1]); // the hub number
+        int clientSessionID = Integer.parseInt(commands[1]); // the hub number
+        String forwardSessionId = String.format("%s::%s", "302", clientSessionID);
+        //*** find the hub connected to him, then (get the hub session from the connected client list)<- is done by outPutToClients()
+        // then pass the argument
 
-        String forwardSessionId = String.format("%s::%s", "302", issuinSessionID);
-        // how to refer to hub that associated to that client
-        mock.hubReportsAllGadgets(issuinSessionID);
-       // ClientHandler.getInstance().outputToClients(hubNumber,true,true,false,forwardSessionId);
+        Session session = ClientHandler.getInstance().getSession(issuinSessionID);
+        Client theClient = ClientHandler.getInstance().getConnectedClients().get(session);
+        int hubID = theClient.hubID;
+        //Session hubSession;
+        // hubSession =ClientHandler.getInstance().getConnectedHubSessionByHubID(hubID);
+        ClientHandler.getInstance().outputToClients(hubID, true, true, false, forwardSessionId);
+
+        // 302 from the client to the server is submitted as client request
+        // 302 from the server to the hub, is sent as outputToClients(TO THE HUB)
+        // 303 from hub to server, hubReportsAllGadgets();
+        // 304 from server to client outputToClients(TO THE CLIENT WHO ISSUED THE REQUEST)
+
     }
 
     // #303 -> #304
     private void receiveAllHubGadgets(String[] commands, int issuinSessionID) throws Exception {
-        int targetSessionID = Integer.parseInt(commands[1]);
+        //303
+        int targetSessionID = Integer.parseInt(commands[1]);//the client who issued the request
         int numberOfGadgets = Integer.parseInt(commands[2]);
 
-        // Encapsulate (build) new command from the decapsulated incoming command (according to protocol)
+
+        //304
+        // Encapsulate (build) new command from the de-encapsulate incoming command (according to protocol)
         String forwardGadgetsMsg = "304";
         for (int command = 3; command < commands.length; command++) {
             forwardGadgetsMsg = String.format("%s::%s::%s", forwardGadgetsMsg, numberOfGadgets, commands[command]);
         }
-        // Send to individual client
+        // Send to individual client who issued the request using his sessionID
         ClientHandler.getInstance().outputToClients(targetSessionID, false, true, false, forwardGadgetsMsg);
     }
 

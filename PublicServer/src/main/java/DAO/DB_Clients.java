@@ -46,6 +46,8 @@ public class DB_Clients {
     private void connect() {
         connection = null;
 
+        System.out.println(ip+port+database+"<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
+
         String url = "jdbc:mysql://" + ip + ":" + port + "/" + database + "?useSSL=false&user=" + account + "&password=" + password + "&serverTimezone=UTC";
         try {
             connection = DriverManager.getConnection(url);
@@ -185,6 +187,8 @@ public class DB_Clients {
         connect();
         int results = 0;
         boolean check = false;
+        String pass;
+        int theHubID;
 
         try {
             // check valid login
@@ -196,6 +200,7 @@ public class DB_Clients {
             if (resultSet.next()){
                 results++;
                 check = true;
+                System.out.println("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< is found");
             }
             if (results != 1){
                 check = false;

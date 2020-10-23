@@ -28,7 +28,7 @@ public class WebSocketServer {
     // Message from client
     @OnWebSocketMessage
     public void onMessage(Session session, String message) throws Exception {
-        System.out.println("WE R HERE>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
+        System.out.println("WE R HERE  ON MESSAGE >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
         ClientHandler.getInstance().addClientRequest(session, message);
     }
 }

@@ -31,7 +31,7 @@ public class Mock_Interaction {
             @Override
             public void run() {
                 try {
-                    hubReportsGadgetState();
+                   // hubReportsGadgetState();
                     //hubReportsAllGadgets();
                 } catch (Exception e) {
                     close();
@@ -48,12 +48,14 @@ public class Mock_Interaction {
         reportStateThread.interrupt();
     }
 
+    // hub answer with 303 on the ps request 302
     public void hubReportsAllGadgets(int threadIdIssuingClient) {
         // Reports 4 gadgets:
         // - My lamp (SWITCH)
         // - Front door (BINARY_SENSOR)
         // - Kitchen temp (SENSOR)
         // - Window lamp (SWITCH)
+
         String protocolString =
                 "303::" + threadIdIssuingClient + "::4::" +
                         "1::My Lamp::SWITCH::light::" + (isGadgetOneOn? "1":"0") + "::30::" +
@@ -62,7 +64,7 @@ public class Mock_Interaction {
                         "4::Window lamp::SWITCH::light::1::60";
 
         // Add as a request to the server
-        ClientRequest hubRequest = new ClientRequest(1, protocolString);
+        ClientRequest hubRequest = new ClientRequest(threadIdIssuingClient, protocolString);
         try {
             Server.getInstance().clientRequests.put(hubRequest);
         } catch (InterruptedException e) {

@@ -34,7 +34,7 @@ public class ClientHandler {
      * - The only class accessing the database class DB_Clients.
      */
 
-    public static HashMap<Session, Client> connectedClients;
+    public HashMap<Session, Client> connectedClients;
 
 
     private int clientLimit;
@@ -80,7 +80,6 @@ public class ClientHandler {
     }
 
 
-
     // ======================================== ACCEPT AND MANAGE NEW CLIENTS =================================================
 
     public void addClient(Session session) {
@@ -90,14 +89,14 @@ public class ClientHandler {
             session.setIdleTimeout(8000);
             //Map session to new generic client instance
             Client newClient = new Client();
-            connectedClients.put(session,newClient);
+            connectedClients.put(session, newClient);
             debugLog("Connected clients", String.valueOf(connectedClients.size()));
         }
     }
 
     public void removeClient(Session session) {
         synchronized (lock_clients) {
-            if(session.isOpen()) {
+            if (session.isOpen()) {
                 session.close();
             }
             connectedClients.remove(session);
@@ -113,16 +112,17 @@ public class ClientHandler {
             debugLog("Request from client", getIP(session), request);
             try {
                 if (connectedClients.get(session).loggedIn) {
-                    if (request.toLowerCase().equals("ping")){
+                    if (request.toLowerCase().equals("ping")) {
                         // Ping. Resets idle time
-                        debugLog("Ping from client",getIP(session));
+                        debugLog("Ping from client", getIP(session));
                     } else {
                         // Add request to server
                         ClientRequest newRequest = new ClientRequest(connectedClients.get(session).sessionID, request);
                         Server.getInstance().clientRequests.put(newRequest);
                     }
                 } else {
-                    session.setIdleTimeout(60 *1000); // Increase idle threshold
+                    session.setIdleTimeout(60 * 1000); // Increase idle threshold
+                    // ****if the client is not logged in call the login****
                     clientLogin(session, request);
                 }
             } catch (Exception e) {
@@ -198,10 +198,10 @@ public class ClientHandler {
         // Response according to HoSo protocol #102
         String loginConfirmation = String.format("102::%s::%s::%s::%s", nameID, admin, hubAlias, newSessionKey);
         writeToClient(session, loginConfirmation);
-
-        // Request all gadgets on behalf of the client
-        String request = String.format("%s::%s", "302", validClient.hubID); // requesting the hub number
-        ClientRequest requestAllGadgets = new ClientRequest(validClient.sessionID, request); // session id =1,
+        //302 from the client to the server, 302 from the server to the hub, 303 from hub to server, 304 from server to client
+        // Request all gadgets from the hub that belongs to the client on behalf of the client
+        String request = String.format("%s::%s", "302", validClient.sessionID);
+        ClientRequest requestAllGadgets = new ClientRequest(validClient.sessionID, request);
         Server.getInstance().clientRequests.put(requestAllGadgets);
     }
 
@@ -225,34 +225,35 @@ public class ClientHandler {
         //System.out.println(check+"<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< valid");
         //if (check) {
 
-            JSONObject result = clientDB.automaticUserLogin(nameID, sessionKey);
-            int hubId = (Integer) result.get("hubId");
-            boolean isAdmin = (Boolean) result.get("isAdmin");
+        JSONObject result = clientDB.automaticUserLogin(nameID, sessionKey);
+        int hubId = (Integer) result.get("hubId");
+        boolean isAdmin = (Boolean) result.get("isAdmin");
 
-            // Here it should be checked if the client is connected to its hub
-            String hubAlias = getHubByHubID(hubId).alias;
+        // Here it should be checked if the client is connected to its hub
+        String hubAlias = getHubByHubID(hubId).alias;
 
-            Client_User validClient = new Client_User(hubId, nameID, isAdmin);
-            connectedClients.put(session, validClient);
+        Client_User validClient = new Client_User(hubId, nameID, isAdmin);
+        connectedClients.put(session, validClient);
 
-            debugLog(String.format("%s (%s)", "Client logged in", nameID), validClient.sessionID, getIP(session));
+        debugLog(String.format("%s (%s)", "Client logged in", nameID), validClient.sessionID, getIP(session));
 
-            // Response according to HoSo protocol #104
-            String responseMsg = "Successful login";
-            String loginConfirmation = String.format("104::%s", responseMsg);
-            writeToClient(session, loginConfirmation);
+        // Response according to HoSo protocol #104
+        String responseMsg = "Successful login";
+        String loginConfirmation = String.format("104::%s", responseMsg);
+        writeToClient(session, loginConfirmation);
 
-            // Request all gadgets on behalf of the client
-            String request = String.format("%s::%s", "302", validClient.sessionID); //302::1
-            ClientRequest requestAllGadgets = new ClientRequest(validClient.sessionID, request);// 1,"302::1"
-            Server.getInstance().clientRequests.put(requestAllGadgets);
+        // Request all gadgets on behalf of the client
+        String request = String.format("%s::%s", "302", validClient.sessionID); //302::1
+        ClientRequest requestAllGadgets = new ClientRequest(validClient.sessionID, request);// 1,"302::1"
+        Server.getInstance().clientRequests.put(requestAllGadgets);
         //}else {
-          //  throw new Exception("Wrong session key! ");
+        //  throw new Exception("Wrong session key! ");
         //}
     }
 
     // #120
     private void hubLogin(Session session, String[] loginRequest) throws Exception {
+        //120::12::1234::my house
         //TODO: Implement hub login
         /**
          * - DB method only returns true/false (no data in case of success, and no exception in case of failure)
@@ -263,21 +264,36 @@ public class ClientHandler {
          * - If not successful login:
          *   - Same as with failed userLogin
          */
+        String msgToHub;
+        String hubLoginConfirmation;
         int hubId = Integer.parseInt(loginRequest[1]);
         String hubPass = loginRequest[2];
         String hubAlas = loginRequest[3];
+        if (clientDB.hubLogin(hubId, hubPass)) {
 
-        clientDB.hubLogin(hubId,hubPass);
+            Client_Hub validHub = new Client_Hub(hubId, hubAlas);
+            connectedClients.put(session, validHub);
+            debugLog(String.format("%s (%s)", "Hub logged in", hubId), validHub.sessionID, getIP(session));
+            // response
+            msgToHub = "Successful login";
+            hubLoginConfirmation = String.format("121::%s", msgToHub);
+            writeToClient(session, hubLoginConfirmation);
+        } else {
+            msgToHub = "Unsuccessful login, the hub information are incorrect!";
+            hubLoginConfirmation = String.format("901::%s", msgToHub);
+            writeToClient(session, hubLoginConfirmation);
+        }
+    }
 
-        Client_Hub validHub = new Client_Hub(hubId,hubAlas);
-        connectedClients.put(session,validHub);
-        debugLog(String.format("%s (%s)", "Hub logged in", hubId), validHub.sessionID, getIP(session));
-
-        // response
-        String msgToHub = "Successful login";
-        String hubLoginConfirmation = String.format("121::%s", msgToHub);
-        writeToClient(session,hubLoginConfirmation);
-
+    public Session getConnectedHubSessionByHubID(int hubID) throws Exception {
+        synchronized (lock_clients) {
+            for (Session session : connectedClients.keySet()) {
+                if (connectedClients.get(session).hubID == hubID) {
+                    return session;
+                }
+            }
+        }
+        throw new Exception("No session match");
     }
 
     private String generateSessionKey(String userName) throws Exception {
@@ -304,23 +320,23 @@ public class ClientHandler {
 
     private Client_Hub getHubByHubID(int hubID) throws Exception {
 
-        if (hubID <= 1){
+        if (hubID <= 1) {
             throw new Exception("successfully logged in, BUT NO hub is connected to your username!!");
         }
-        Client_Hub client_hub = new Client_Hub(hubID,"My house");
+        Client_Hub client_hub = new Client_Hub(hubID, "My house");
 
         return client_hub;
     }
 
     // For logging purposes
-    private String getIP (Session session) {
+    private String getIP(Session session) {
         return session.getRemoteAddress().getAddress().toString().substring(1);
     }
 
-    private Session getSession (int sessionID) throws Exception {
+    public Session getSession(int sessionID) throws Exception {
         synchronized (lock_clients) {
-            for(Session session : connectedClients.keySet()) {
-                if(connectedClients.get(session).sessionID == sessionID) {
+            for (Session session : connectedClients.keySet()) {
+                if (connectedClients.get(session).sessionID == sessionID) {
                     return session;
                 }
             }
@@ -345,10 +361,18 @@ public class ClientHandler {
 
     public void outputToClients(int sessionID, boolean toHub, boolean onlyToIndividual, boolean onlyToAdmin, String msg) {
         synchronized (lock_clients) {
+            Session targetSession;
+
             try {
                 if (onlyToIndividual) {
-                    Session targetSession = getSession(sessionID);
-                    Client targetClient = connectedClients.get(targetSession);
+                    System.out.println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>< in here output to clients ");
+                    if (toHub) {
+                        targetSession = getConnectedHubSessionByHubID(sessionID);// get the hub session
+                    } else {
+                        targetSession = getSession(sessionID); // get client session here
+                    }
+                    System.out.println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>< target session" + targetSession);
+                    Client targetClient = connectedClients.get(targetSession);// I will get the whole client object
                     // check if user is slogged in
                     if (targetClient.loggedIn) {
                         // check if target is a hub...
@@ -356,6 +380,7 @@ public class ClientHandler {
                                 // ... or target is a user, and verify admin rights in relation to the output request
                                 (!toHub && targetClient instanceof Client_User && (!onlyToAdmin || ((Client_User) targetClient).isAdmin()))) {
                             // output to client
+                            System.out.println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<< WRITING TO THE HUB ");
                             writeToClient(targetSession, msg);
                         }
                     }
@@ -403,4 +428,7 @@ public class ClientHandler {
     }
 
 
+    public HashMap<Session, Client> getConnectedClients() {
+        return connectedClients;
+    }
 }
