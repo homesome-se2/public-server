@@ -365,13 +365,11 @@ public class ClientHandler {
 
             try {
                 if (onlyToIndividual) {
-                    System.out.println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>< in here output to clients ");
                     if (toHub) {
                         targetSession = getConnectedHubSessionByHubID(sessionID);// get the hub session
                     } else {
                         targetSession = getSession(sessionID); // get client session here
                     }
-                    System.out.println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>< target session" + targetSession);
                     Client targetClient = connectedClients.get(targetSession);// I will get the whole client object
                     // check if user is slogged in
                     if (targetClient.loggedIn) {

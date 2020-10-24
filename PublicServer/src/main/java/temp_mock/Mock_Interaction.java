@@ -72,6 +72,7 @@ public class Mock_Interaction {
         }
     }
 
+
     public void hubReportsGadgetState() throws Exception {
         // Toggles the gadget:
         // My lamp (SWITCH) Gadget id: 1
