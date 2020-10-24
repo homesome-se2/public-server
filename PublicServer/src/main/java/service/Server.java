@@ -157,10 +157,9 @@ public class Server {
         Session session = ClientHandler.getInstance().getSession(issuinSessionID);
         Client theClient = ClientHandler.getInstance().getConnectedClients().get(session);
         int hubID = theClient.hubID;
-        //Session hubSession;
-        // hubSession =ClientHandler.getInstance().getConnectedHubSessionByHubID(hubID);
         ClientHandler.getInstance().outputToClients(hubID, true, true, false, forwardSessionId);
-
+        // mock hub answers
+        // mock.hubReportsAllGadgets(issuinSessionID);
         // 302 from the client to the server is submitted as client request
         // 302 from the server to the hub, is sent as outputToClients(TO THE HUB)
         // 303 from hub to server, hubReportsAllGadgets();
@@ -171,53 +170,84 @@ public class Server {
     // #303 -> #304
     private void receiveAllHubGadgets(String[] commands, int issuinSessionID) throws Exception {
         //303
-        int targetSessionID = Integer.parseInt(commands[1]);//the client who issued the request
-        int numberOfGadgets = Integer.parseInt(commands[2]);
+        int targetSessionID = Integer.parseInt(commands[1]);// the client who issued the request
+        int numberOfGadgets = Integer.parseInt(commands[2]);// the gadget information
 
 
         //304
         // Encapsulate (build) new command from the de-encapsulate incoming command (according to protocol)
-        String forwardGadgetsMsg = "304";
+        String forwardGadgetsMsg = String.format("%s::%s", "304", numberOfGadgets);
         for (int command = 3; command < commands.length; command++) {
-            forwardGadgetsMsg = String.format("%s::%s::%s", forwardGadgetsMsg, numberOfGadgets, commands[command]);
+            forwardGadgetsMsg = String.format("%s::%s", forwardGadgetsMsg, commands[command]);
         }
         // Send to individual client who issued the request using his sessionID
         ClientHandler.getInstance().outputToClients(targetSessionID, false, true, false, forwardGadgetsMsg);
     }
 
     // #311 -> #312
-    private void requestGadgetStateChange(String[] commands, int issuingThreadID) throws Exception {
-        //TODO: Implement
-        // Client requests to alter a gadget state.
-        // Rebuild and forward the request to target hub as: #312
-        // Look in ClientManager for appropriate method to use to locate the hub threadID based on Client's hubID.
-        // Note that the client's thread ID should be included in the forwarded msg to the hub.
+    private void requestGadgetStateChange(String[] commands, int cSessionID) throws Exception {
+        int gadgetID;
+        String newGadgetState;
+        //#311 CLIENT -> PS
+
+        gadgetID = Integer.parseInt(commands[1]);// the client who issued the request
+        newGadgetState = commands[2];// the gadget information
+
+        // #312 PS -> HUB
+        Session session = ClientHandler.getInstance().getSession(cSessionID);
+        Client theClient = ClientHandler.getInstance().getConnectedClients().get(session);
+        int hubID = theClient.hubID;
+        String forwardGadgetsMsg = String.format("%s::%s::%s", "312", gadgetID, newGadgetState);
+        ClientHandler.getInstance().outputToClients(hubID, true, true, false, forwardGadgetsMsg);
     }
 
     // #315 -> #316
     private void receiveGadgetStateChange(String[] commands, int issuingSessionID) throws Exception {
-        // Rebuild and forward the update to all users associated with that hub
+        // #315 HUB -> PS
+        // 315::gadgetID::GadgetState
+
         String gadgetID = commands[1];
         String newState = commands[2];
+
+        //#316 PS -> CLIENT
+        // 316::gadgetID::GadgetState
+
         String forwardMsg = String.format("%s::%s::%s", "316", gadgetID, newState);
-        // Send to all users associated with that hub
+        // Send to all users associated with that hub -> th connection between the hub and the clients are figured by outputToAllClients()
         ClientHandler.getInstance().outputToClients(issuingSessionID, false, false, false, forwardMsg);
+        //mock.hubReportsGadgetState();// answers with -> 316::gadgetID::GadgetState
+
     }
 
     // #370 -> #371
-    private void requestGadgetGroups(int issuingSessionID) {
-        String forwardRequest = String.format("%s::%s", "371", issuingSessionID);
-        // Send request to same hub as client with sessionID "issuingSessionID is associated with.
-        //TODO: Implement
+    private void requestGadgetGroups(int cSessionID) {
+        // #370 CLIENT -> PS---- NO ARGUMENTS      ---- DONE
+        // #371 PS -> HUB ------ CLIENT SESSION ID ---- DONE
+        // #372 HUB ->PS ------- CLIENT SESSION ID && [groupName]:[G_id]:[G_id]:[G_id]::[groupName]:[G_id]:[G_id] --- DONE
+        // #373 PS -> CLIENT --- [groupName]:[G_id]:[G_id]:[G_id]::[groupName]:[G_id]:[G_id]
 
+        // #371 PS -> HUB ---- DONE
+        Session session = null;
+        try {
+            String forwardRequest = String.format("%s::%s", "371", cSessionID);
+            session = ClientHandler.getInstance().getSession(cSessionID);
+            Client theClient = ClientHandler.getInstance().getConnectedClients().get(session);
+            int hubID = theClient.hubID;
+            ClientHandler.getInstance().outputToClients(hubID, true, true, false, forwardRequest);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
         //mock.requestGadgetGroups(issuingSessionID); //TODO: REMOVE LATER
     }
 
     // #372 -> #373
     private void receiveGadgetGroups(String[] commands) throws Exception {
+        // #372 HUB ->PS -- DONE
         int targetSessionID = Integer.parseInt(commands[1]);
+
+        // #373 PS -> CLIENT -- DONE
+        // Encapsulate (build) new command from the de-encapsulated incoming command (according to protocol)
         String forwardGroups = "373";
-        // Encapsulate (build) new command from the decapsulated incoming command (according to protocol)
         for (int command = 2; command < commands.length; command++) {
             forwardGroups = String.format("%s::%s", forwardGroups, commands[command]);
         }
