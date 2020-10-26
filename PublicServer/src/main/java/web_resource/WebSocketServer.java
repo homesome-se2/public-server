@@ -1,6 +1,6 @@
-package main.java.web_resource;
+package web_resource;
 
-import main.java.service.ClientHandler;
+import service.ClientHandler;
 import org.eclipse.jetty.websocket.api.Session;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketClose;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketConnect;

@@ -1,10 +1,10 @@
-package main.java.service;
+package service;
 
-import main.java.DAO.DB_Clients;
-import main.java.model.Client;
-import main.java.model.ClientRequest;
-import main.java.model.Settings;
-import main.java.temp_mock.Mock_Interaction;
+import DAO.DB_Clients;
+import model.Client;
+import model.ClientRequest;
+import model.Settings;
+import temp_mock.Mock_Interaction;
 import org.eclipse.jetty.websocket.api.Session;
 
 
@@ -280,7 +280,7 @@ public class Server {
             if (settings.isDebugMode()) {
                 String logData = "";
                 if (data.length > 0) {
-                    logData = String.format("[%s] (Thread %s)", data[0], threadID);
+                    logData = String.format("[%s] (Session %s)", data[0], threadID);
                     if (data.length > 1) {
                         for (int i = 1; i < data.length; i++) {
                             logData = String.format("%s %s", logData, data[i]);

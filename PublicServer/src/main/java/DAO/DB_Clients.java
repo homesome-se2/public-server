@@ -1,6 +1,6 @@
-package main.java.DAO;
+package DAO;
 
-import main.java.service.Server;
+import service.Server;
 import org.json.simple.JSONObject;
 
 

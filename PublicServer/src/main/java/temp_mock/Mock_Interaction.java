@@ -1,9 +1,9 @@
-package main.java.temp_mock;
+package temp_mock;
 
 
-import main.java.model.ClientRequest;
-import main.java.service.ClientHandler;
-import main.java.service.Server;
+import model.ClientRequest;
+import service.ClientHandler;
+import service.Server;
 
 public class Mock_Interaction {
 

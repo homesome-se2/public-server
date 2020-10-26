@@ -1,5 +1,5 @@
 {
-  "debugMode": false,
+  "debugMode": true,
   "serverPort": 8084,
   "serverThreadPool": 10,
   "dbIP": "localhost",
