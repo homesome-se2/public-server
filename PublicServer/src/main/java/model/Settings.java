@@ -1,4 +1,4 @@
-package main.java.model;
+package model;
 
 import com.google.gson.Gson;
 
@@ -21,7 +21,7 @@ public class Settings {
     //Note: 'config.json' should be located "next to" the project folder: [config.json][PublicServer]
 
     //private static final String configFileJSON = "./config.json";  // When run as JAR on Linux
-     private static final String configFileJSON = (new File(System.getProperty("user.dir")).getParentFile().getPath()).concat("/public-server/config.json"); // When run from IDE
+     private static final String configFileJSON = (new File(System.getProperty("user.dir")).getParentFile().getPath()).concat("/config.json"); // When run from IDE
     public Settings(){}
 
     public void readInSettings() throws Exception {

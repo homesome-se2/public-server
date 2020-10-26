@@ -1,13 +1,13 @@
-package main.java.service;
+package service;
 
 
-import main.java.web_resource.WebSocketServer;
+import web_resource.WebSocketServer;
 import org.eclipse.jetty.websocket.api.Session;
-import main.java.DAO.DB_Clients;
-import main.java.model.Client;
-import main.java.model.ClientRequest;
-import main.java.model.Client_Hub;
-import main.java.model.Client_User;
+import DAO.DB_Clients;
+import model.Client;
+import model.ClientRequest;
+import model.Client_Hub;
+import model.Client_User;
 import spark.Spark;
 
 
@@ -21,7 +21,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Optional;
 
-import static main.java.service.Encryption.generateSalt;
+import static service.Encryption.generateSalt;
 
 
 public class ClientHandler {
