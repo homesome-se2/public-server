@@ -3,7 +3,7 @@ package model;
 
 public class Client {
 
-    public int sessionID;
+    public int sessionID; // Target when sending data
     public boolean loggedIn;
     private static int sessionCounter = 0;
 
