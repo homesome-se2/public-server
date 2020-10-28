@@ -154,7 +154,7 @@ public class ClientHandler {
             } catch (Exception e) {
                 debugLog("Failed login", getIP(session), e.getMessage());
                 // Pass custom exception msg. E.g. from DB_Clients
-                writeToClient(session, "901::".concat(e.getMessage()));
+                writeToClient(session, "903::".concat(e.getMessage()));
                 // session.close();
                 removeClient(session);
             }
