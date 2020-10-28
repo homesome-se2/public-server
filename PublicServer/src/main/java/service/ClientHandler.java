@@ -19,9 +19,6 @@ import java.security.MessageDigest;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.Optional;
-
-import static service.Encryption.generateSalt;
 
 
 public class ClientHandler {
@@ -185,7 +182,8 @@ public class ClientHandler {
         boolean admin = (Boolean) result.get("isAdmin");
 
         // check the hub if it's connected, get the hub alias, if not throw an exception
-        String hubAlias = getHubByHubID(hubID).alias;
+        //String hubAlias = getHubByHubID(hubID).alias;
+        String hubAlias = getHubAlias(hubID);
 
         // Create valid user instance
         Client_User validClient = new Client_User(hubID, nameID, admin);
@@ -230,7 +228,8 @@ public class ClientHandler {
         boolean isAdmin = (Boolean) result.get("isAdmin");
 
         // Here it should be checked if the client is connected to its hub
-        String hubAlias = getHubByHubID(hubId).alias;
+        //String hubAlias = getHubByHubID(hubId).alias;
+        getHubAlias(hubId);
 
         Client_User validClient = new Client_User(hubId, nameID, isAdmin);
         connectedClients.put(session, validClient);
@@ -285,17 +284,6 @@ public class ClientHandler {
         }
     }
 
-    public Session getConnectedHubSessionByHubID(int hubID) throws Exception {
-        synchronized (lock_clients) {
-            for (Session session : connectedClients.keySet()) {
-                if (connectedClients.get(session).hubID == hubID) {
-                    return session;
-                }
-            }
-        }
-        throw new Exception("No session match");
-    }
-
     private String generateSessionKey(String userName) throws Exception {
         // Create "random" hash value with small collision risk.
         // Called by manualUserLogin()
@@ -320,12 +308,52 @@ public class ClientHandler {
 
     private Client_Hub getHubByHubID(int hubID) throws Exception {
 
-        if (hubID <= 1) {
+        /*if (hubID <= 1) {
             throw new Exception("successfully logged in, BUT NO hub is connected to your username!!");
         }
         Client_Hub client_hub = new Client_Hub(hubID, "My house");
 
-        return client_hub;
+        return client_hub;*/
+
+        synchronized (lock_clients) {
+            for (Session session : connectedClients.keySet()) {
+                Client client = connectedClients.get(session);
+                if (client instanceof Client_Hub && client.hubID == hubID) {
+                    return (Client_Hub) client;
+                }
+            }
+            throw new Exception("Your hub is not connected");
+        }
+    }
+
+    private String getHubAlias(int hubID) throws Exception {
+        synchronized (lock_clients) {
+            for (Session session : connectedClients.keySet()) {
+                Client client = connectedClients.get(session);
+                if (client instanceof Client_Hub && client.hubID == hubID) {
+                    return ((Client_Hub) client).alias;
+                }
+            }
+            throw new Exception("Your hub is not connected");
+        }
+    }
+
+    public int getHubSessionIdByUserSessionId(int userSessionID) throws Exception {
+        synchronized (lock_clients) {
+            int hubID = connectedClients.get(getSession(userSessionID)).hubID;
+            return getHubByHubID(hubID).sessionID;
+        }
+    }
+
+    private Session getSession(int sessionID) throws Exception {
+        synchronized (lock_clients) {
+            for (Session session : connectedClients.keySet()) {
+                if (connectedClients.get(session).sessionID == sessionID) {
+                    return session;
+                }
+            }
+            throw new Exception("No session match");
+        }
     }
 
     // For logging purposes
@@ -333,43 +361,23 @@ public class ClientHandler {
         return session.getRemoteAddress().getAddress().toString().substring(1);
     }
 
-    public Session getSession(int sessionID) throws Exception {
-        synchronized (lock_clients) {
-            for (Session session : connectedClients.keySet()) {
-                if (connectedClients.get(session).sessionID == sessionID) {
-                    return session;
-                }
-            }
-        }
-        throw new Exception("No session match");
-    }
-
-    //TODO: ONLY USED BY MOCK. REMOVE LATER
-    public int getSessionID() {
-        synchronized (lock_clients) {
-            if (connectedClients.size() == 0) {
-                return -1;
-            } else {
-                // Find session id of any logged in client.
-                return connectedClients.get(connectedClients.entrySet().iterator().next().getKey()).sessionID;
-            }
-        }
-    }
-
     // ======================================== OUTPUT TO CLIENT(S) =================================================
     // Used by Server class to output data to connected clients
 
     public void outputToClients(int sessionID, boolean toHub, boolean onlyToIndividual, boolean onlyToAdmin, String msg) {
         synchronized (lock_clients) {
-            Session targetSession;
-
+            Session targetSession = null;
             try {
-                if (onlyToIndividual) {
+                targetSession = getSession(sessionID);
+
+                /*if (onlyToIndividual) {
                     if (toHub) {
-                        targetSession = getConnectedHubSessionByHubID(sessionID);// get the hub session
+                        targetSession = getHubSession(sessionID);// get the hub session
                     } else {
                         targetSession = getSession(sessionID); // get client session here
-                    }
+                    }*/
+
+                if(onlyToIndividual) {
                     Client targetClient = connectedClients.get(targetSession);// I will get the whole client object
                     // check if user is slogged in
                     if (targetClient.loggedIn) {
@@ -394,7 +402,7 @@ public class ClientHandler {
                     }
                 }
             } catch (Exception e) {
-                debugLog(e.getMessage(), sessionID);
+                debugLog(e.getMessage(), getIP(targetSession), "SessionID: " + sessionID);
             }
         }
     }
@@ -413,6 +421,7 @@ public class ClientHandler {
             }
         }
     }
+
     // ===================================== DEBUG LOGS =======================================================
 
 
@@ -420,12 +429,7 @@ public class ClientHandler {
         Server.getInstance().debugLog(log, data);
     }
 
-    private void debugLog(String log, int threadID, String... data) {
-        Server.getInstance().debugLog(log, threadID, data);
-    }
-
-
-    public HashMap<Session, Client> getConnectedClients() {
-        return connectedClients;
+    private void debugLog(String log, int sessionID, String... data) {
+        Server.getInstance().debugLog(log, sessionID, data);
     }
 }

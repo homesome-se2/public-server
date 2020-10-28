@@ -1,16 +1,13 @@
 package service;
 
 import DAO.DB_Clients;
-import model.Client;
+import com.google.gson.Gson;
 import model.ClientRequest;
 import model.Settings;
-import temp_mock.Mock_Interaction;
-import org.eclipse.jetty.websocket.api.Session;
 
-
-//import temp_mock.Mock_Interaction;
-
-import java.util.HashMap;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 
@@ -21,15 +18,17 @@ public class Server {
     public volatile boolean terminateServer;
     private DB_Clients clientDB;
 
+    // config.json
+    //Note: 'config.json' should be located "next to" the project folder: [config.json][PublicServer]
+    //private static final String configFileJSON = "./config.json";  // When run as JAR on Linux
+    private static final String configFileJSON = (new File(System.getProperty("user.dir")).getParentFile().getPath()).concat("/config.json"); // When run from IDE
+
     // Lock objects
     private final Object lock_closeServer;
     private final Object lock_debugLogs;
 
     // Make Singleton
     private static Server instance = null;
-
-    // Temporary mock
-    private Mock_Interaction mock; // REMOVE LATER
 
     public static Server getInstance() {
         if (instance == null) {
@@ -41,8 +40,6 @@ public class Server {
     private Server() {
         clientRequests = new ArrayBlockingQueue<>(10);
         terminateServer = false;
-        //to use the mock hub
-        mock = new Mock_Interaction();
         lock_closeServer = new Object();
         lock_debugLogs = new Object();
     }
@@ -51,9 +48,7 @@ public class Server {
         System.out.println("HomeSome server running...");
         try {
             // Read in settings from JSON
-            settings = new Settings();
-            settings.readInSettings();
-            mock.launch();
+            readInSettings();
 
             // Launch ClientHandler
             ClientHandler.getInstance().launchWebSocketServer(settings.getServerPort(), settings.getClientLimit());
@@ -69,11 +64,17 @@ public class Server {
         synchronized (lock_closeServer) {
             if (!terminateServer) {
                 terminateServer = true;
-                // terminate connection with the mock hub
-                mock.close();
                 ClientHandler.getInstance().stopWebSocketServer();
                 System.out.println("HomeSome server shutting down");
             }
+        }
+    }
+
+    private void readInSettings() throws Exception {
+        try (FileReader reader = new FileReader(configFileJSON)) {
+            settings = new Gson().fromJson(reader, Settings.class);
+        } catch (FileNotFoundException e) {
+            throw new Exception("Unable to read settings from config.json");
         }
     }
 
@@ -87,30 +88,36 @@ public class Server {
                 String commands[] = clientRequest.request.split("::");
                 int sessionID = clientRequest.sessionID;
 
-                switch (commands[0]) {
-                    case "105":
-                        clientLogout(commands, sessionID);
-                    case "302":
-                        requestAllHubGadgets(commands, sessionID); //302::hub number, valid client session ID
-                        break;
-                    case "303":
-                        receiveAllHubGadgets(commands, sessionID);
-                        break;
-                    case "311":
-                        requestGadgetStateChange(commands, sessionID);
-                        break;
-                    case "315":
-                        receiveGadgetStateChange(commands, sessionID);
-                        break;
-                    case "370":
-                        requestGadgetGroups(sessionID);
-                        break;
-                    case "372":
-                        receiveGadgetGroups(commands);
-                        break;
-                    default:
-                        ClientHandler.getInstance().outputToClients(sessionID, false, true, false, "901::Invalid format");
-                        break;
+                try {
+                    switch (commands[0]) {
+                        case "105":
+                            clientLogout(commands, sessionID);
+                        case "301":
+                            userRequestAllHubGadgets(sessionID);
+                        case "302":
+                            serverRequestAllHubGadgets(commands, sessionID); //302::hub number, valid client session ID
+                            break;
+                        case "303":
+                            receiveAllHubGadgets(commands, sessionID);
+                            break;
+                        case "311":
+                            requestGadgetStateChange(commands, sessionID);
+                            break;
+                        case "315":
+                            receiveGadgetStateChange(commands, sessionID);
+                            break;
+                        case "370":
+                            requestGadgetGroups(sessionID);
+                            break;
+                        case "372":
+                            receiveGadgetGroups(commands);
+                            break;
+                        default:
+                            ClientHandler.getInstance().outputToClients(sessionID, false, true, false, "901::Invalid format");
+                            break;
+                    }
+                } catch (Exception e) {
+                    ClientHandler.getInstance().outputToClients(sessionID, false, true, false, "901::".concat(e.getMessage()));
                 }
             } catch (InterruptedException e) {
                 throw new Exception("Terminating processRequests()");
@@ -142,11 +149,17 @@ public class Server {
 
     }
 
+    // #301 -> #302
+    private void userRequestAllHubGadgets(int issuingSessionID) throws Exception {
+        String forwardRequest = String.format("302::%s", issuingSessionID);
+        int hubSessionID = ClientHandler.getInstance().getHubSessionIdByUserSessionId(issuingSessionID);
+        ClientHandler.getInstance().outputToClients(hubSessionID, true, true, false, forwardRequest);
+    }
 
     // #302 -> #302
     // ps sends 302 to the hub to get all gadgets
-    private void requestAllHubGadgets(String[] commands, int issuinSessionID) throws Exception {
-
+    private void serverRequestAllHubGadgets(String[] commands, int issuinSessionID) throws Exception {
+/*
         //302::clientSessionID
         // getting the session Id for the client requesting the gadgets and then forward it to the associated hub
         int clientSessionID = Integer.parseInt(commands[1]); // the hub number
@@ -158,13 +171,18 @@ public class Server {
         Client theClient = ClientHandler.getInstance().getConnectedClients().get(session);
         int hubID = theClient.hubID;
         ClientHandler.getInstance().outputToClients(hubID, true, true, false, forwardSessionId);
+        //TODO: HubID is not the same as the hub's sessionID (which is the target for output)
         // mock hub answers
         // mock.hubReportsAllGadgets(issuinSessionID);
         // 302 from the client to the server is submitted as client request
         // 302 from the server to the hub, is sent as outputToClients(TO THE HUB)
         // 303 from hub to server, hubReportsAllGadgets();
         // 304 from server to client outputToClients(TO THE CLIENT WHO ISSUED THE REQUEST)
+        */
 
+        String forwardRequest = String.format("302::%s", commands[1]);
+        int hubSessionID = ClientHandler.getInstance().getHubSessionIdByUserSessionId(issuinSessionID);
+        ClientHandler.getInstance().outputToClients(hubSessionID, true, true, false, forwardRequest);
     }
 
     // #303 -> #304
@@ -186,6 +204,7 @@ public class Server {
 
     // #311 -> #312
     private void requestGadgetStateChange(String[] commands, int cSessionID) throws Exception {
+       /*
         int gadgetID;
         String newGadgetState;
         //#311 CLIENT -> PS
@@ -199,6 +218,11 @@ public class Server {
         int hubID = theClient.hubID;
         String forwardGadgetsMsg = String.format("%s::%s::%s", "312", gadgetID, newGadgetState);
         ClientHandler.getInstance().outputToClients(hubID, true, true, false, forwardGadgetsMsg);
+        */
+
+        String forwardRequest = String.format("312::%s::%s", commands[1], commands[2]);
+        int hubSessionID = ClientHandler.getInstance().getHubSessionIdByUserSessionId(cSessionID);
+        ClientHandler.getInstance().outputToClients(hubSessionID, true, true, false, forwardRequest);
     }
 
     // #315 -> #316
@@ -220,7 +244,8 @@ public class Server {
     }
 
     // #370 -> #371
-    private void requestGadgetGroups(int cSessionID) {
+    private void requestGadgetGroups(int cSessionID) throws Exception{
+       /*
         // #370 CLIENT -> PS---- NO ARGUMENTS      ---- DONE
         // #371 PS -> HUB ------ CLIENT SESSION ID ---- DONE
         // #372 HUB ->PS ------- CLIENT SESSION ID && [groupName]:[G_id]:[G_id]:[G_id]::[groupName]:[G_id]:[G_id] --- DONE
@@ -238,6 +263,11 @@ public class Server {
             e.printStackTrace();
         }
         //mock.requestGadgetGroups(issuingSessionID); //TODO: REMOVE LATER
+        */
+
+        String forwardRequest = String.format("371::%s", cSessionID);
+        int hubSessionID = ClientHandler.getInstance().getHubSessionIdByUserSessionId(cSessionID);
+        ClientHandler.getInstance().outputToClients(hubSessionID, true, true, false, forwardRequest);
     }
 
     // #372 -> #373
