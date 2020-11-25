@@ -56,7 +56,7 @@ public class ClientHandler {
         clientDB = new DB_Clients();
         lock_clients = new Object();
         lock_login = new Object();
-        Server.getInstance().clientDB = clientDB;
+        Server.getInstance().clientDB=clientDB;
     }
 
     public void launchWebSocketServer(int serverTcpPort, int clientLimit) {
@@ -316,7 +316,6 @@ public class ClientHandler {
             throw new Exception("Your hub is not connected");
         }
     }
-
     public Client_Hub getHubBySessionID(int sessionID) throws Exception {
 
         synchronized (lock_clients) {
@@ -352,50 +351,14 @@ public class ClientHandler {
     public int getHubIDByHubSessionId(int hubSessionID) throws Exception {
         synchronized (lock_clients) {
             int hubID = connectedClients.get(getSession(hubSessionID)).hubID;
-            if (hubID > -1) {
-                return hubID;
-            } else {
-                throw new Exception("No hubID was found connected to that session!");
-            }
+           if (hubID > -1){
+               return hubID;
+           }else {
+               throw new Exception("No hubID was found connected to that session!");
+           }
         }
     }
 
-
-    public String getUserNameIdByUserSessionId ( int userSessionID) throws Exception {
-            synchronized (lock_clients) {
-                String theNameId = "";
-                for (Session session : connectedClients.keySet()) {
-                    Client client = connectedClients.get(session);
-                    if (client instanceof Client_User) {
-                        if (((Client_User) client).sessionID == userSessionID) {
-                            theNameId = ((Client_User) client).getNameID();
-                            //System.out.println("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"+ theNameId);
-                            return theNameId;
-                        }
-                    }
-                }
-            }
-            throw new Exception("Name Id not found!");
-
-        }
-
-
-    public String getSessionKeyByUserSessionId(int userSessionID) throws Exception {
-        synchronized (lock_clients) {
-            String theSessionKey = "";
-            for (Session session : connectedClients.keySet()) {
-                Client client = connectedClients.get(session);
-                if (client instanceof Client_User) {
-                    if (((Client_User) client).sessionID == userSessionID) {
-                        theSessionKey = ((Client_User) client).getSessionKey();
-                        //System.out.println("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"+ theSessionKey);
-                        return theSessionKey;
-                    }
-                }
-            }
-        }
-        throw new Exception("Session Key not found!");
-    }
 
     public Session getSession(int sessionID) throws Exception {
         synchronized (lock_clients) {
@@ -408,6 +371,43 @@ public class ClientHandler {
         }
     }
 
+    public String getUserNameIdByUserSessionId(int userSessionID) throws Exception {
+        synchronized (lock_clients) {
+            String theNameId = "";
+            for (Session session : connectedClients.keySet()) {
+                Client client = connectedClients.get(session);
+                if (client instanceof Client_User) {
+                    if(((Client_User) client).sessionID == userSessionID){
+                        theNameId = ((Client_User) client).getNameID();
+                        //System.out.println("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"+ theNameId);
+                        return theNameId;
+                    }
+                }
+            }
+        }
+        throw new Exception("Name Id not found!");
+
+    }
+
+    public String getSessionKeyByUserSessionId(int userSessionID) throws Exception {
+        synchronized (lock_clients) {
+            String theSessionKey = "";
+            for (Session session : connectedClients.keySet()) {
+                Client client = connectedClients.get(session);
+                if (client instanceof Client_User) {
+                    if(((Client_User) client).sessionID == userSessionID){
+                        theSessionKey = ((Client_User) client).getSessionKey();
+                        //System.out.println("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"+ theSessionKey);
+                        return theSessionKey;
+                    }
+                }
+            }
+        }
+        throw new Exception("Session Key not found!");
+    }
+
+
+
     // For logging purposes
     private String getIP(Session session) {
         return session.getRemoteAddress().getAddress().toString().substring(1);
@@ -416,8 +416,7 @@ public class ClientHandler {
     // ======================================== OUTPUT TO CLIENT(S) =================================================
     // Used by Server class to output data to connected clients
 
-    public void outputToClients(int sessionID, boolean toHub, boolean onlyToIndividual,
-                                boolean onlyToAdmin, String msg) {
+    public void outputToClients(int sessionID, boolean toHub, boolean onlyToIndividual, boolean onlyToAdmin, String msg) {
         synchronized (lock_clients) {
             Session targetSession = null;
             try {
@@ -486,4 +485,3 @@ public class ClientHandler {
         Server.getInstance().debugLog(log, sessionID, data);
     }
 }
-
