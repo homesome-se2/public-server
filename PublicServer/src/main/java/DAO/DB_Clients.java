@@ -23,7 +23,6 @@ public class DB_Clients {
     // Lock object
     private final Object lock_db;
 
-
     public DB_Clients() {
         setDbSpecs();
         lock_db = new Object();
@@ -123,7 +122,7 @@ public class DB_Clients {
                       throw new Exception("Login failed. Connection is good");
                   }
                   // Update sessionKey to DB_Users
-                  preparedStatement = connection.prepareStatement("UPDATE hoso.client_user SET sessionKey = ? WHERE nameId = ?;");
+                  preparedStatement = connection.prepareStatement("INSERT INTO hoso.client_session (sessionKey, client_user_nameId) VALUES (?, ?);");
                   preparedStatement.setString(1, newSessionKey);
                   preparedStatement.setString(2, nameID);
                   results = preparedStatement.executeUpdate();
@@ -149,25 +148,38 @@ public class DB_Clients {
         connect();
         JSONObject info = new JSONObject();
         int results = 0;
+        int result = 0;
 
         try {
-            // Get hubID and admin-state
-            preparedStatement = connection.prepareStatement("SELECT client_hub_hubId, isAdmin FROM hoso.client_user WHERE nameId = ? AND sessionKey = ?;");
-            preparedStatement.setString(1, nameID);
-            preparedStatement.setString(2, sessionKey);
+
+            // Verify auto login
+            preparedStatement = connection.prepareStatement("SELECT sessionKey, client_user_nameId FROM hoso.client_session WHERE sessionKey = ? AND client_user_nameId = ?; ");
+            preparedStatement.setString(1, sessionKey);
+            preparedStatement.setString(2, nameID);
             resultSet = preparedStatement.executeQuery();
 
-            while (resultSet.next()) {
-                results++;
-                //We already have user name from the method parameters (so we don't need to acquire it from DB_Users).
-                int hubID = resultSet.getInt("client_hub_hubId"); // As String, while it is an integer in MySQL
-                boolean admin = resultSet.getBoolean("isAdmin");
+            if (resultSet.next()) {
+                // Get hubID and admin-state
+                result++;
+                preparedStatement = connection.prepareStatement("SELECT client_hub_hubId, isAdmin FROM hoso.client_user WHERE nameId = ?;");
+                preparedStatement.setString(1, nameID);
+                resultSet = preparedStatement.executeQuery();
 
-                info.put("hubId", hubID);
-                info.put("isAdmin", admin);
+                while (resultSet.next()) {
+                    results++;
+                    //We already have user name from the method parameters (so we don't need to acquire it from DB_Users).
+                    int hubID = resultSet.getInt("client_hub_hubId"); // As String, while it is an integer in MySQL
+                    boolean admin = resultSet.getBoolean("isAdmin");
+
+                    info.put("hubId", hubID);
+                    info.put("isAdmin", admin);
+                }
+
+                if (results != 1) {
+                    throw new Exception("Failed to load user info. Connection is good");
+                }
             }
-
-            if (results != 1) {
+            if (result != 1) {
                 throw new Exception("AutoLogin failed. Connection is good");
             }
         } catch (SQLException e) {
@@ -212,17 +224,35 @@ public class DB_Clients {
         return check;
     }
 
-    public void manualUserLogout(String nameId, String sessionKey)throws Exception{
+    public void logoutThisDevice(String sessionKey)throws Exception{
         connect();
         int result = 0;
 
         try {
-            preparedStatement = connection.prepareStatement("UPDATE hoso.client_user SET sessionKey = ? WHERE nameId = ?;");
+            preparedStatement = connection.prepareStatement("DELETE from hoso.client_session WHERE sessionKey = ?;");
             preparedStatement.setString(1, sessionKey);
-            preparedStatement.setString(2, nameId);
             result = preparedStatement.executeUpdate();
             if (result != 1) {
-                throw new Exception("Server unable to update session key. Code 1");
+                throw new Exception("Server unable to delete session key. Code 1");
+            }
+        } catch (SQLException e) {
+            throw new Exception("Error on SQL query. Code 1");
+        } catch (NullPointerException e) {
+            throw new Exception("NullPointer Exception");
+        } finally {
+            closeConnection();
+        }
+    }
+
+    public void logoutAllDevices(String nameId)throws Exception{
+        connect();
+        int result1 = 0;
+        try {
+            preparedStatement = connection.prepareStatement("DELETE from  hoso.client_session WHERE client_user_nameId = ? limit 10;");
+            preparedStatement.setString(1, nameId);
+            result1 = preparedStatement.executeUpdate();
+            if (result1 == 0 ) {
+                throw new Exception("Server unable to delete session key. Code 1");
             }
         } catch (SQLException e) {
             throw new Exception("Error on SQL query. Code 1");

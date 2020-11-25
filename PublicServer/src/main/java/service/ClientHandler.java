@@ -56,6 +56,7 @@ public class ClientHandler {
         clientDB = new DB_Clients();
         lock_clients = new Object();
         lock_login = new Object();
+        Server.getInstance().clientDB=clientDB;
     }
 
     public void launchWebSocketServer(int serverTcpPort, int clientLimit) {
@@ -140,7 +141,6 @@ public class ClientHandler {
                 switch (commands[0]) {
                     case "101": // Manual user login (Android or browser)
                         manualUserLogin(session, commands);
-
                         break;
                     case "103": // Automatic user login (Android or browser)
                         automaticUserLogin(session, commands);
@@ -186,10 +186,11 @@ public class ClientHandler {
         String hubAlias = getHubAlias(hubID);
 
         // Create valid user instance
-        Client_User validClient = new Client_User(hubID, nameID, admin);
+        Client_User validClient = new Client_User(hubID, nameID, admin, newSessionKey);
 
         // Overwrite the Client mapped to the session, with a specialized and logged in:
         connectedClients.put(session, validClient);
+        System.out.println("----------------------------------------------------------------------------------------------" + connectedClients.get(session));
 
         debugLog(String.format("%s (%s)", "Client logged in", nameID), validClient.sessionID, getIP(session));
 
@@ -231,7 +232,7 @@ public class ClientHandler {
         //String hubAlias = getHubByHubID(hubId).alias;
         getHubAlias(hubId);
 
-        Client_User validClient = new Client_User(hubId, nameID, isAdmin);
+        Client_User validClient = new Client_User(hubId, nameID, isAdmin, sessionKey);
         connectedClients.put(session, validClient);
 
         debugLog(String.format("%s (%s)", "Client logged in", nameID), validClient.sessionID, getIP(session));
@@ -302,19 +303,9 @@ public class ClientHandler {
         return myChecksum;
     }
 
-    //TODO: Maybe add a method to hash passwords and sessionKeys before they are stored to DB.
-
     // ============================================ UTILITIES =======================================================
 
     private Client_Hub getHubByHubID(int hubID) throws Exception {
-
-        /*if (hubID <= 1) {
-            throw new Exception("successfully logged in, BUT NO hub is connected to your username!!");
-        }
-        Client_Hub client_hub = new Client_Hub(hubID, "My house");
-
-        return client_hub;*/
-
         synchronized (lock_clients) {
             for (Session session : connectedClients.keySet()) {
                 Client client = connectedClients.get(session);
@@ -369,6 +360,43 @@ public class ClientHandler {
 
 
     public Session getSession(int sessionID) throws Exception {
+
+    public String getUserNameIdByUserSessionId(int userSessionID) throws Exception {
+        synchronized (lock_clients) {
+            String theNameId = "";
+            for (Session session : connectedClients.keySet()) {
+                Client client = connectedClients.get(session);
+                if (client instanceof Client_User) {
+                     if(((Client_User) client).sessionID == userSessionID){
+                         theNameId = ((Client_User) client).getNameID();
+                         //System.out.println("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"+ theNameId);
+                         return theNameId;
+                     }
+                }
+            }
+        }
+        throw new Exception("Name Id not found!");
+
+    }
+
+    public String getSessionKeyByUserSessionId(int userSessionID) throws Exception {
+        synchronized (lock_clients) {
+            String theSessionKey = "";
+            for (Session session : connectedClients.keySet()) {
+                Client client = connectedClients.get(session);
+                if (client instanceof Client_User) {
+                    if(((Client_User) client).sessionID == userSessionID){
+                        theSessionKey = ((Client_User) client).getSessionKey();
+                        //System.out.println("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"+ theSessionKey);
+                        return theSessionKey;
+                    }
+                }
+            }
+        }
+        throw new Exception("Session Key not found!");
+    }
+
+    private Session getSession(int sessionID) throws Exception {
         synchronized (lock_clients) {
             for (Session session : connectedClients.keySet()) {
                 if (connectedClients.get(session).sessionID == sessionID) {
@@ -400,7 +428,7 @@ public class ClientHandler {
                         targetSession = getSession(sessionID); // get client session here
                     }*/
 
-                if(onlyToIndividual) {
+                if (onlyToIndividual) {
                     Client targetClient = connectedClients.get(targetSession);// I will get the whole client object
                     // check if user is slogged in
                     if (targetClient.loggedIn) {
