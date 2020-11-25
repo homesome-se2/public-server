@@ -153,6 +153,7 @@ public class Server {
                             break;
                     }
                 } catch (Exception e) {
+                    throw new Exception("Terminating processRequests()");
                 }
             } catch (Exception e) {
             }
