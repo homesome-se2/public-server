@@ -3,9 +3,10 @@ package service;
 import DAO.DB_Clients;
 import com.google.gson.Gson;
 import model.ClientRequest;
+import model.Client_Hub;
 import model.Settings;
+import org.eclipse.jetty.websocket.api.Session;
 
-import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -21,8 +22,8 @@ public class Server {
     // config.json
     //Note: 'config.json' should be located "next to" the project folder: [config.json][PublicServer]
     //private static final String configFileJSON = "./config.json";  // When run as JAR on Linux
-    private static final String configFileJSON = (new File(System.getProperty("user.dir")).getParentFile().getPath()).concat("/config.json"); // When run from IDE
-
+    // private static final String configFileJSON = (new File(System.getProperty("user.dir")).getParentFile().getPath()).concat("/config.json"); // When run from IDE
+    private static final String configFileJSON = "config.json";
     // Lock objects
     private final Object lock_closeServer;
     private final Object lock_debugLogs;
@@ -91,9 +92,17 @@ public class Server {
                 try {
                     switch (commands[0]) {
                         case "105":
-                            clientLogout(commands, sessionID);
+                            logOutSpecificDevice(commands, sessionID);
+                            break;
+                        case "106":
+                            logOutAllDevices();
+                            break;
+                        case "201":
+                            requestRemoteAccessCredentials(commands, sessionID);
+                            break;
                         case "301":
                             userRequestAllHubGadgets(sessionID);
+                            break;
                         case "302":
                             serverRequestAllHubGadgets(commands, sessionID); //302::hub number, valid client session ID
                             break;
@@ -106,11 +115,35 @@ public class Server {
                         case "315":
                             receiveGadgetStateChange(commands, sessionID);
                             break;
+                        case "351":
+                            detectNewGadget(commands, sessionID);
+                            break;
+                        case "353":
+                            gadgetConnectionLost(commands, sessionID);
+                            break;
                         case "370":
                             requestGadgetGroups(sessionID);
                             break;
                         case "372":
                             receiveGadgetGroups(commands);
+                            break;
+                        case "401":
+                            alterGadgetAliasReq(commands, sessionID);
+                            break;
+                        case "403":
+                            reportGadgetAliasChange(commands, sessionID);
+                            break;
+                        case "410":
+                            requestToEditOrCreateGadgetGroup(commands, sessionID);
+                            break;
+                        case "411":
+                            deleteGadgetGroup(commands, sessionID);
+                            break;
+                        case "501":
+                            notLoggedAndroidReportsLocation(commands, sessionID);
+                            break;
+                        case "502":
+                            loggedAndroidReportsLocation(commands, sessionID);
                             break;
                         default:
                             ClientHandler.getInstance().outputToClients(sessionID, false, true, false, "901::Invalid format");
@@ -138,16 +171,6 @@ public class Server {
      * #105 -> X     : No forwarding to be done.
      */
 
-    // #105 -> X
-    private void clientLogout(String[] commands, int issuinSessionID) {
-        //TODO: Implement
-        // User client (Android/browser) has manually pressed the logout button.
-        // Remove/overwrite the client's sessionKey in DB. This would force a manual login next time client wants to connect.
-        // This method returns nothing (possibly just an exception msg '901::xxxx' if something goes wrong).
-        // how should I get name of the cient in order to delete his session key ???
-        //clientDB.manualUserLogout();
-
-    }
 
     // #301 -> #302
     private void userRequestAllHubGadgets(int issuingSessionID) throws Exception {
@@ -244,7 +267,7 @@ public class Server {
     }
 
     // #370 -> #371
-    private void requestGadgetGroups(int cSessionID) throws Exception{
+    private void requestGadgetGroups(int cSessionID) throws Exception {
        /*
         // #370 CLIENT -> PS---- NO ARGUMENTS      ---- DONE
         // #371 PS -> HUB ------ CLIENT SESSION ID ---- DONE
@@ -284,6 +307,144 @@ public class Server {
         // Send to individual client
         ClientHandler.getInstance().outputToClients(targetSessionID, false, true, false, forwardGroups);
     }
+
+    // TODO: implement
+    // C -> PS 105 , 106
+    private void logOutSpecificDevice(String[] commands, int issuinSessionID) {
+        // destroys client session key for current session
+
+        //TODO: Implement
+        // User client (Android/browser) has manually pressed the logout button.
+        // Remove/overwrite the client's sessionKey in DB. This would force a manual login next time client wants to connect.
+        // This method returns nothing (possibly just an exception msg '901::xxxx' if something goes wrong).
+        // how should I get name of the cient in order to delete his session key ???
+        //clientDB.manualUserLogout();
+    }
+
+    private void logOutAllDevices() {
+        // destroys client session key for all recorded session
+
+    }
+
+
+    //WC -> PS 201 -------{ UNDER CONSTRUCTION }----------
+    private void requestRemoteAccessCredentials(String[] commands, int issuinSessionID) throws Exception {
+        // @params  C_nameID, C_Pwd
+        String requestedNameID = commands[1];
+        String requestedPwd = commands[2];
+        int theClientHubSession= ClientHandler.getInstance().getHubSessionIdByUserSessionId(issuinSessionID);
+        Client_Hub theCustomerHub= ClientHandler.getInstance().getHubBySessionID(theClientHubSession);
+
+        //PS -> WC 202  --- returnNewAccessCredentials
+        // return the ->   hubID - hubPwd - client nameID to the WC
+        String hubID= String.valueOf(theCustomerHub.hubID);
+        String hubPwd= "";
+        String cNameID="";
+        String forwardMsg = String.format("%s::%s::%s::%s", "202", hubID, hubPwd, cNameID);
+
+    }
+
+    // H ->PS 351 -- PS -> C 352
+    private void detectNewGadget(String[] commands, int issuingSessionID) {
+        //351::[G1_id]::[G1_alias]::[G1_type]::[G1_valueTemplate]::[G1_state]::[G1_pollDelaySec]
+        //PS -> C 352 out put to client ---- forwardTheNewDetectedGadget
+        String forwardGadgetsMsg = String.format("%s", "352");
+        for (int command = 1; command < commands.length; command++) {
+            forwardGadgetsMsg = String.format("%s::%s", forwardGadgetsMsg, commands[command]);
+        }
+        // Send to all clients who are connected to that hub
+        ClientHandler.getInstance().outputToClients(issuingSessionID, false, false, false, forwardGadgetsMsg);
+    }
+
+
+    //H-> PS 353 -- PS -> C 354
+    private void gadgetConnectionLost(String[] commands, int issuingSessionID) {
+        String gadgetID = commands[1];
+
+        //PS -> C 354 gadgetRemovalReq
+        String forwardMsg = String.format("%s::%s", "354", gadgetID);
+        // Send to all users associated with that hub -> th connection between the hub and the clients are figured by outputToAllClients()
+        ClientHandler.getInstance().outputToClients(issuingSessionID, false, false, false, forwardMsg);
+
+    }
+
+    //WC -> PS 401 -- PS -> H 402
+    private void alterGadgetAliasReq(String[] commands, int issuingSessionID) throws Exception {
+        // @params  g_ID, g_newAlias
+        String gadgetID = commands[1];
+        String newAlias = commands[2];
+
+        //PS -> H 402 reqAlterGadgetAlias
+        // @params  C_sessionId,g_ID, g_newAlias
+        int hubSessionID = ClientHandler.getInstance().getHubSessionIdByUserSessionId(issuingSessionID);
+        String forwardMsg = String.format("%s::%s::%s::%s", "402", issuingSessionID, gadgetID, newAlias);
+        // Sending to the hub that belongs to that client who issued the alter gadget alias request
+        ClientHandler.getInstance().outputToClients(hubSessionID, true, false, false, forwardMsg);
+    }
+
+    //403 H-> PS reportGadget alias change H-> PS G_ID - G_newAlias
+    //404 PS -> C @params G_ID ,G_newAlias
+    private void reportGadgetAliasChange(String[] commands, int issuingSessionID) {
+        String gadgetID = commands[1];
+        String newAlias = commands[2];
+
+        String forwardMsg = String.format("%s::%s::%s", "404", gadgetID, newAlias);
+        ClientHandler.getInstance().outputToClients(issuingSessionID, false, false, false, forwardMsg);
+    }
+
+    //410 WC -> PS
+    private void requestToEditOrCreateGadgetGroup(String[] commands, int issuingSessionID) {
+        //@params A3 = [groupName]:[G_id]:[G_id]:[G_id]
+        // if groupName Exist then edit else create new group
+        String groupName = commands[1];
+
+        //we should include a protocol that will talk with the hub here to inform about the name of the group
+        String forwardGadgetsMsg = String.format("%s::", "...");
+        for (int command = 2; command < commands.length; command++) {
+            forwardGadgetsMsg = String.format("%s:%s", forwardGadgetsMsg, commands[command]);
+        }
+
+    }
+
+    //411 WC -> PS @params groupName
+    private void deleteGadgetGroup(String[] commands, int issuingSessionID) {
+        String groupName = commands[1];
+    }
+
+    //501 AC -> PS --- 503 PS -> H
+    public void notLoggedAndroidReportsLocation(String[] commands, int issuingSessionID) throws Exception {
+        //C_nameID, C_sessionKey, Ac_longitude, Ac_latitude
+        String nameID = commands[1];
+        String sessionKey = commands[2];
+        String longitude = commands[3];
+        String latitude = commands[4];
+        Session session = ClientHandler.getInstance().getSession(issuingSessionID);
+
+        // call automatic login ang give it the session key
+        // we should change the method of automatic login
+        String loginRequest="103::"+nameID+"::"+sessionKey;
+        ClientHandler.getInstance().addClientRequest(session,loginRequest);
+        int hubSessionID = ClientHandler.getInstance().getHubSessionIdByUserSessionId(issuingSessionID);
+        //503 PS -> H
+        //forward C_nameID, Ac_longitude, Ac_latitude
+        String forwardMsg = String.format("%s::%s::%s::%s", "503", nameID, longitude, latitude);
+        ClientHandler.getInstance().outputToClients(hubSessionID, true, false, false, forwardMsg);
+
+    }
+
+    //502 AC -> PS -- 503 PS -> H
+    public void loggedAndroidReportsLocation(String[] commands, int issuingSessionID) throws Exception {
+        //Ac_longitude, Ac_latitude
+        String longitude = commands[1];
+        String latitude = commands[2];
+
+        //503 PS -> H
+        //forward C_nameID, Ac_longitude, Ac_latitude
+        int hubSessionID = ClientHandler.getInstance().getHubSessionIdByUserSessionId(issuingSessionID);
+        String forwardMsg = String.format("%s::%s::%s", "503", longitude, latitude);
+        ClientHandler.getInstance().outputToClients(hubSessionID, true, false, false, forwardMsg);
+    }
+
 
     // ===================================== DEBUG LOGS =======================================================
 

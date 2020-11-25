@@ -1,3 +1,5 @@
+package main.java;
+
 import service.Server;
 import org.apache.log4j.BasicConfigurator;
 
