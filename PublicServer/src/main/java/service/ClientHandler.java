@@ -205,7 +205,7 @@ public class ClientHandler {
     }
 
     // #103
-    private void automaticUserLogin(Session session, String[] loginRequest) throws Exception {
+    public void automaticUserLogin(Session session, String[] loginRequest) throws Exception {
         //TODO: Implement automatic login
         /**
          * Similar to manualUserLogin, except:
@@ -316,6 +316,18 @@ public class ClientHandler {
             throw new Exception("Your hub is not connected");
         }
     }
+    public Client_Hub getHubBySessionID(int sessionID) throws Exception {
+
+        synchronized (lock_clients) {
+            for (Session session : connectedClients.keySet()) {
+                Client client = connectedClients.get(session);
+                if (client instanceof Client_Hub && client.sessionID == sessionID) {
+                    return (Client_Hub) client;
+                }
+            }
+            throw new Exception("Your hub is not connected");
+        }
+    }
 
     private String getHubAlias(int hubID) throws Exception {
         synchronized (lock_clients) {
@@ -331,8 +343,31 @@ public class ClientHandler {
 
     public int getHubSessionIdByUserSessionId(int userSessionID) throws Exception {
         synchronized (lock_clients) {
-            int hubID = connectedClients.get(getSession(userSessionID)).hubID;
+            int hubID = getHubIDByHubSessionId(userSessionID);
             return getHubByHubID(hubID).sessionID;
+        }
+    }
+
+    public int getHubIDByHubSessionId(int hubSessionID) throws Exception {
+        synchronized (lock_clients) {
+            int hubID = connectedClients.get(getSession(hubSessionID)).hubID;
+           if (hubID > -1){
+               return hubID;
+           }else {
+               throw new Exception("No hubID was found connected to that session!");
+           }
+        }
+    }
+
+
+    public Session getSession(int sessionID) throws Exception {
+        synchronized (lock_clients) {
+            for (Session session : connectedClients.keySet()) {
+                if (connectedClients.get(session).sessionID == sessionID) {
+                    return session;
+                }
+            }
+            throw new Exception("No session match");
         }
     }
 
@@ -342,11 +377,11 @@ public class ClientHandler {
             for (Session session : connectedClients.keySet()) {
                 Client client = connectedClients.get(session);
                 if (client instanceof Client_User) {
-                     if(((Client_User) client).sessionID == userSessionID){
-                         theNameId = ((Client_User) client).getNameID();
-                         //System.out.println("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"+ theNameId);
-                         return theNameId;
-                     }
+                    if(((Client_User) client).sessionID == userSessionID){
+                        theNameId = ((Client_User) client).getNameID();
+                        //System.out.println("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"+ theNameId);
+                        return theNameId;
+                    }
                 }
             }
         }
@@ -371,16 +406,7 @@ public class ClientHandler {
         throw new Exception("Session Key not found!");
     }
 
-    private Session getSession(int sessionID) throws Exception {
-        synchronized (lock_clients) {
-            for (Session session : connectedClients.keySet()) {
-                if (connectedClients.get(session).sessionID == sessionID) {
-                    return session;
-                }
-            }
-            throw new Exception("No session match");
-        }
-    }
+
 
     // For logging purposes
     private String getIP(Session session) {
@@ -452,7 +478,7 @@ public class ClientHandler {
 
 
     private void debugLog(String log, String... data) {
-        Server.getInstance().debugLog(log, data);
+        service.Server.getInstance().debugLog(log, data);
     }
 
     private void debugLog(String log, int sessionID, String... data) {
