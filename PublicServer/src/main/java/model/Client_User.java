@@ -13,12 +13,14 @@ public class Client_User extends Client {
     //TODO Use email address instead as unique identifier?
     private final String nameID;
     private final boolean admin;
+    private final String sessionKey;
 
 
-    public Client_User(int hubID, String nameID, boolean admin) {
+    public Client_User(int hubID, String nameID, boolean admin,String sessionKey) {
         super(hubID);
         this.nameID = nameID;
         this.admin = admin;
+        this.sessionKey = sessionKey;
         loggedIn = true; // logged in for specialized client
     }
 
@@ -30,5 +32,7 @@ public class Client_User extends Client {
         return admin;
     }
 
-
+    public String getSessionKey() {
+        return sessionKey;
+    }
 }

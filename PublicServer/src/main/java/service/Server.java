@@ -5,7 +5,6 @@ import com.google.gson.Gson;
 import model.ClientRequest;
 import model.Settings;
 
-import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -16,12 +15,12 @@ public class Server {
     public BlockingQueue<ClientRequest> clientRequests;
     public volatile Settings settings;
     public volatile boolean terminateServer;
-    private DB_Clients clientDB;
-
+    public  DB_Clients clientDB;
     // config.json
     //Note: 'config.json' should be located "next to" the project folder: [config.json][PublicServer]
     //private static final String configFileJSON = "./config.json";  // When run as JAR on Linux
-    private static final String configFileJSON = (new File(System.getProperty("user.dir")).getParentFile().getPath()).concat("/config.json"); // When run from IDE
+   // private static final String configFileJSON = (new File(System.getProperty("user.dir")).getParentFile().getPath()).concat("/config.json"); // When run from IDE
+    private static final String configFileJSON = "config.json"; // When run from IDE
 
     // Lock objects
     private final Object lock_closeServer;
@@ -42,6 +41,7 @@ public class Server {
         terminateServer = false;
         lock_closeServer = new Object();
         lock_debugLogs = new Object();
+
     }
 
     public void launch() {
@@ -92,8 +92,13 @@ public class Server {
                     switch (commands[0]) {
                         case "105":
                             clientLogout(commands, sessionID);
+                            break;
+                        case "106":
+                            clientLogoutAllDevices(commands,sessionID);
+                            break;
                         case "301":
                             userRequestAllHubGadgets(sessionID);
+                            break;
                         case "302":
                             serverRequestAllHubGadgets(commands, sessionID); //302::hub number, valid client session ID
                             break;
@@ -138,15 +143,31 @@ public class Server {
      * #105 -> X     : No forwarding to be done.
      */
 
-    // #105 -> X
-    private void clientLogout(String[] commands, int issuinSessionID) {
+    // #105 -> 107
+    private void clientLogout(String[] commands, int issuinSessionID) throws Exception {
         //TODO: Implement
         // User client (Android/browser) has manually pressed the logout button.
         // Remove/overwrite the client's sessionKey in DB. This would force a manual login next time client wants to connect.
         // This method returns nothing (possibly just an exception msg '901::xxxx' if something goes wrong).
-        // how should I get name of the cient in order to delete his session key ???
-        //clientDB.manualUserLogout();
 
+        // Here it should bring the specific sessionKey for nameID and send it to the DB to delete it
+        String currentUserSessionKey = ClientHandler.getInstance().getSessionKeyByUserSessionId(issuinSessionID);
+        clientDB.logoutThisDevice(currentUserSessionKey);
+        // 107
+        String confirmLogout = String.format("107::%s", "This device is successfully logged out");
+        ClientHandler.getInstance().outputToClients(issuinSessionID,false,true,false,confirmLogout);
+
+    }
+
+    // #106 -> 107
+    private void clientLogoutAllDevices(String[] commands,int issuingSessionID) throws Exception {
+
+        // Here it should bring the name ID for that user and send it to the DB to remove all sessionKey assigned to that user
+        String nameId = ClientHandler.getInstance().getUserNameIdByUserSessionId(issuingSessionID);
+        clientDB.logoutAllDevices(nameId);
+        // 107
+        String msg = String.format("107::%s", "successfully logout all devices assigned to your nameID");
+        ClientHandler.getInstance().outputToClients(issuingSessionID,false,false,false,msg);
     }
 
     // #301 -> #302
