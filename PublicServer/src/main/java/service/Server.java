@@ -52,7 +52,7 @@ public class Server {
             readInSettings();
 
             // Launch ClientHandler
-            ClientHandler.getInstance().launchWebSocketServer(settings.getServerPort(), settings.getClientLimit());
+           ClientHandler.getInstance().launchWebSocketServer(settings.getServerPort(), settings.getClientLimit());
             processRequests();
         } catch (Exception e) {
             System.out.println(e.getMessage());
@@ -65,6 +65,9 @@ public class Server {
         synchronized (lock_closeServer) {
             if (!terminateServer) {
                 terminateServer = true;
+                ClientHandler.getInstance().stopWebSocketServer();
+                // terminate connection with the mock hub
+                //mock.close();
                 ClientHandler.getInstance().stopWebSocketServer();
                 System.out.println("HomeSome server shutting down");
             }
@@ -150,16 +153,11 @@ public class Server {
                             break;
                     }
                 } catch (Exception e) {
-                    ClientHandler.getInstance().outputToClients(sessionID, false, true, false, "901::".concat(e.getMessage()));
                 }
-            } catch (InterruptedException e) {
-                throw new Exception("Terminating processRequests()");
             } catch (Exception e) {
-                // Ignore & carry on.
             }
         }
     }
-
 
     //TODO: Implement methods for all supported requests, according to HoSo protocol.
 
@@ -182,26 +180,6 @@ public class Server {
     // #302 -> #302
     // ps sends 302 to the hub to get all gadgets
     private void serverRequestAllHubGadgets(String[] commands, int issuinSessionID) throws Exception {
-/*
-        //302::clientSessionID
-        // getting the session Id for the client requesting the gadgets and then forward it to the associated hub
-        int clientSessionID = Integer.parseInt(commands[1]); // the hub number
-        String forwardSessionId = String.format("%s::%s", "302", clientSessionID);
-        //*** find the hub connected to him, then (get the hub session from the connected client list)<- is done by outPutToClients()
-        // then pass the argument
-
-        Session session = ClientHandler.getInstance().getSession(issuinSessionID);
-        Client theClient = ClientHandler.getInstance().getConnectedClients().get(session);
-        int hubID = theClient.hubID;
-        ClientHandler.getInstance().outputToClients(hubID, true, true, false, forwardSessionId);
-        //TODO: HubID is not the same as the hub's sessionID (which is the target for output)
-        // mock hub answers
-        // mock.hubReportsAllGadgets(issuinSessionID);
-        // 302 from the client to the server is submitted as client request
-        // 302 from the server to the hub, is sent as outputToClients(TO THE HUB)
-        // 303 from hub to server, hubReportsAllGadgets();
-        // 304 from server to client outputToClients(TO THE CLIENT WHO ISSUED THE REQUEST)
-        */
 
         String forwardRequest = String.format("302::%s", commands[1]);
         int hubSessionID = ClientHandler.getInstance().getHubSessionIdByUserSessionId(issuinSessionID);
@@ -236,11 +214,10 @@ public class Server {
         newGadgetState = commands[2];// the gadget information
 
         // #312 PS -> HUB
-        Session session = ClientHandler.getInstance().getSession(cSessionID);
-        Client theClient = ClientHandler.getInstance().getConnectedClients().get(session);
+        Session session = main.java.service.ClientHandler.getInstance().getSession(cSessionID);
+        Client theClient = main.java.service.ClientHandler.getInstance().getConnectedClients().get(session);
         int hubID = theClient.hubID;
         String forwardGadgetsMsg = String.format("%s::%s::%s", "312", gadgetID, newGadgetState);
-        ClientHandler.getInstance().outputToClients(hubID, true, true, false, forwardGadgetsMsg);
         */
 
         String forwardRequest = String.format("312::%s::%s", commands[1], commands[2]);
@@ -278,10 +255,10 @@ public class Server {
         Session session = null;
         try {
             String forwardRequest = String.format("%s::%s", "371", cSessionID);
-            session = ClientHandler.getInstance().getSession(cSessionID);
-            Client theClient = ClientHandler.getInstance().getConnectedClients().get(session);
+            session = main.java.service.ClientHandler.getInstance().getSession(cSessionID);
+            Client theClient = main.java.service.ClientHandler.getInstance().getConnectedClients().get(session);
             int hubID = theClient.hubID;
-            ClientHandler.getInstance().outputToClients(hubID, true, true, false, forwardRequest);
+            main.java.service.ClientHandler.getInstance().outputToClients(hubID, true, true, false, forwardRequest);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -332,14 +309,14 @@ public class Server {
         // @params  C_nameID, C_Pwd
         String requestedNameID = commands[1];
         String requestedPwd = commands[2];
-        int theClientHubSession= ClientHandler.getInstance().getHubSessionIdByUserSessionId(issuinSessionID);
-        Client_Hub theCustomerHub= ClientHandler.getInstance().getHubBySessionID(theClientHubSession);
+        int theClientHubSession = ClientHandler.getInstance().getHubSessionIdByUserSessionId(issuinSessionID);
+        Client_Hub theCustomerHub = ClientHandler.getInstance().getHubBySessionID(theClientHubSession);
 
         //PS -> WC 202  --- returnNewAccessCredentials
         // return the ->   hubID - hubPwd - client nameID to the WC
-        String hubID= String.valueOf(theCustomerHub.hubID);
-        String hubPwd= "";
-        String cNameID="";
+        String hubID = String.valueOf(theCustomerHub.hubID);
+        String hubPwd = "";
+        String cNameID = "";
         String forwardMsg = String.format("%s::%s::%s::%s", "202", hubID, hubPwd, cNameID);
 
     }
@@ -422,8 +399,8 @@ public class Server {
 
         // call automatic login ang give it the session key
         // we should change the method of automatic login
-        String loginRequest="103::"+nameID+"::"+sessionKey;
-        ClientHandler.getInstance().addClientRequest(session,loginRequest);
+        String loginRequest = "103::" + nameID + "::" + sessionKey;
+        ClientHandler.getInstance().addClientRequest(session, loginRequest);
         int hubSessionID = ClientHandler.getInstance().getHubSessionIdByUserSessionId(issuingSessionID);
         //503 PS -> H
         //forward C_nameID, Ac_longitude, Ac_latitude
