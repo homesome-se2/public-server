@@ -432,14 +432,17 @@ public class Server {
         String latitude = commands[4];
         Session session = ClientHandler.getInstance().getSession(issuingSessionID);
 
-        // call automatic login ang give it the session key
-        // we should change the method of automatic login
-        String loginRequest = "103::" + nameID + "::" + sessionKey;
+        // call automatic login and give it the nameID, session key, and value = false to not send data
+        // to the background automatic logged in device. THIS WILL BE HANDLED BY THE automaticLogIn()
+        String loginRequest = "103::" + nameID + "::" + sessionKey + "::"+"false";
+        //submitting the log in as a request
         ClientHandler.getInstance().addClientRequest(session, loginRequest);
+        // getting the hub session ID that corresponds to that client
         int hubSessionID = ClientHandler.getInstance().getHubSessionIdByUserSessionId(issuingSessionID);
         //503 PS -> H
-        //forward C_nameID, Ac_longitude, Ac_latitude
+        //forward C_nameID, Ac_longitude, Ac_latitude to the HUB that corresponds to that client
         String forwardMsg = String.format("%s::%s::%s::%s", "503", nameID, longitude, latitude);
+        //outputting to the hub all the information
         ClientHandler.getInstance().outputToClients(hubSessionID, true, false, false, forwardMsg);
 
     }
@@ -452,8 +455,10 @@ public class Server {
 
         //503 PS -> H
         //forward C_nameID, Ac_longitude, Ac_latitude
+        // getting the hub session ID that corresponds to that client
         int hubSessionID = ClientHandler.getInstance().getHubSessionIdByUserSessionId(issuingSessionID);
         String forwardMsg = String.format("%s::%s::%s", "503", longitude, latitude);
+        //outputting to the hub all the information obtained earlier above
         ClientHandler.getInstance().outputToClients(hubSessionID, true, false, false, forwardMsg);
     }
 
