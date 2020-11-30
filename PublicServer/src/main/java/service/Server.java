@@ -182,10 +182,9 @@ public class Server {
         // This method returns nothing (possibly just an exception msg '901::xxxx' if something goes wrong).
 
         // Here it should bring the specific sessionKey for nameID and send it to the DB to delete it
-        String currentUserSessionKey = ClientHandler.getInstance().getSessionKeyByUserSessionId(issuinSessionID);
-        clientDB.logoutThisDevice(currentUserSessionKey);
+        ClientHandler.getInstance().logoutOneDevice(issuinSessionID);
         // 107
-        String confirmLogout = String.format("107::%s", "This device is successfully logged out");
+        String confirmLogout = String.format("107::%s", "Logout successful");
         ClientHandler.getInstance().outputToClients(issuinSessionID,false,true,false,confirmLogout);
 
     }
@@ -194,10 +193,9 @@ public class Server {
     private void clientLogoutAllDevices(String[] commands,int issuingSessionID) throws Exception {
 
         // Here it should bring the name ID for that user and send it to the DB to remove all sessionKey assigned to that user
-        String nameId = ClientHandler.getInstance().getUserNameIdByUserSessionId(issuingSessionID);
-        clientDB.logoutAllDevices(nameId);
+        ClientHandler.getInstance().logoutAllDevices(issuingSessionID);
         // 107
-        String msg = String.format("107::%s", "successfully logout all devices assigned to your nameID");
+        String msg = String.format("107::%s", "All devices logged out");
         ClientHandler.getInstance().outputToClients(issuingSessionID,false,false,false,msg);
     }
 

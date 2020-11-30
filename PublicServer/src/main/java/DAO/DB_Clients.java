@@ -248,7 +248,7 @@ public class DB_Clients {
         connect();
         int result1 = 0;
         try {
-            preparedStatement = connection.prepareStatement("DELETE from  hoso.client_session WHERE client_user_nameId = ? limit 10;");
+            preparedStatement = connection.prepareStatement("DELETE from  hoso.client_session WHERE client_user_nameId = ?;");
             preparedStatement.setString(1, nameId);
             result1 = preparedStatement.executeUpdate();
             if (result1 == 0 ) {
