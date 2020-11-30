@@ -56,7 +56,7 @@ public class ClientHandler {
         clientDB = new DB_Clients();
         lock_clients = new Object();
         lock_login = new Object();
-        Server.getInstance().clientDB=clientDB;
+        Server.getInstance().clientDB = clientDB;
     }
 
     public void launchWebSocketServer(int serverTcpPort, int clientLimit) {
@@ -143,7 +143,7 @@ public class ClientHandler {
                         manualUserLogin(session, commands);
                         break;
                     case "103": // Automatic user login (Android or browser)
-                        automaticUserLogin(session, commands);
+                        automaticUserLogin(session, commands, true);
                         break;
                     case "120": // Hub login
                         hubLogin(session, commands);
@@ -205,7 +205,7 @@ public class ClientHandler {
     }
 
     // #103
-    public void automaticUserLogin(Session session, String[] loginRequest) throws Exception {
+    public void automaticUserLogin(Session session, String[] loginRequest, boolean sendConfirmationMsg) throws Exception {
         //TODO: Implement automatic login
         /**
          * Similar to manualUserLogin, except:
@@ -216,7 +216,13 @@ public class ClientHandler {
         // Request according to HoSo protocol: #103
         String nameID = loginRequest[1];
         String sessionKey = loginRequest[2];
-
+        String confirmationMessage="";
+        if (loginRequest.length > 3) {
+            confirmationMessage = loginRequest[3];
+        }
+        if (!confirmationMessage.isEmpty()) {
+            sendConfirmationMsg = Boolean.valueOf(confirmationMessage);
+        }
         // Here it should verify the entered session key with one that has been encrypted using the same encrypted key
 
         //boolean check = Encryption.verifyValue(sessionKey,encryptedKey, String.valueOf(generateSalt(160)));
@@ -236,19 +242,22 @@ public class ClientHandler {
         connectedClients.put(session, validClient);
 
         debugLog(String.format("%s (%s)", "Client logged in", nameID), validClient.sessionID, getIP(session));
+        if (sendConfirmationMsg) {
+            // Response according to HoSo protocol #104
+            String responseMsg = "Successful login";
+            String loginConfirmation = String.format("104::%s", responseMsg);
+            writeToClient(session, loginConfirmation);
 
-        // Response according to HoSo protocol #104
-        String responseMsg = "Successful login";
-        String loginConfirmation = String.format("104::%s", responseMsg);
-        writeToClient(session, loginConfirmation);
-
-        // Request all gadgets on behalf of the client
-        String request = String.format("%s::%s", "302", validClient.sessionID); //302::1
-        ClientRequest requestAllGadgets = new ClientRequest(validClient.sessionID, request);// 1,"302::1"
-        Server.getInstance().clientRequests.put(requestAllGadgets);
-        //}else {
-        //  throw new Exception("Wrong session key! ");
-        //}
+            // Request all gadgets on behalf of the client
+            String request = String.format("%s::%s", "302", validClient.sessionID); //302::1
+            ClientRequest requestAllGadgets = new ClientRequest(validClient.sessionID, request);// 1,"302::1"
+            Server.getInstance().clientRequests.put(requestAllGadgets);
+            //}else {
+            //  throw new Exception("Wrong session key! ");
+            //}
+        } else {
+            // do nothing because it is logged in from background process to send geo locations
+        }
     }
 
     // #120
@@ -316,6 +325,7 @@ public class ClientHandler {
             throw new Exception("Your hub is not connected");
         }
     }
+
     public Client_Hub getHubBySessionID(int sessionID) throws Exception {
 
         synchronized (lock_clients) {
@@ -351,11 +361,11 @@ public class ClientHandler {
     public int getHubIDByHubSessionId(int hubSessionID) throws Exception {
         synchronized (lock_clients) {
             int hubID = connectedClients.get(getSession(hubSessionID)).hubID;
-           if (hubID > -1){
-               return hubID;
-           }else {
-               throw new Exception("No hubID was found connected to that session!");
-           }
+            if (hubID > -1) {
+                return hubID;
+            } else {
+                throw new Exception("No hubID was found connected to that session!");
+            }
         }
     }
 
@@ -377,7 +387,7 @@ public class ClientHandler {
             for (Session session : connectedClients.keySet()) {
                 Client client = connectedClients.get(session);
                 if (client instanceof Client_User) {
-                    if(((Client_User) client).sessionID == userSessionID){
+                    if (((Client_User) client).sessionID == userSessionID) {
                         theNameId = ((Client_User) client).getNameID();
                         //System.out.println("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"+ theNameId);
                         return theNameId;
@@ -395,7 +405,7 @@ public class ClientHandler {
             for (Session session : connectedClients.keySet()) {
                 Client client = connectedClients.get(session);
                 if (client instanceof Client_User) {
-                    if(((Client_User) client).sessionID == userSessionID){
+                    if (((Client_User) client).sessionID == userSessionID) {
                         theSessionKey = ((Client_User) client).getSessionKey();
                         //System.out.println("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"+ theSessionKey);
                         return theSessionKey;
@@ -405,7 +415,6 @@ public class ClientHandler {
         }
         throw new Exception("Session Key not found!");
     }
-
 
 
     // For logging purposes
