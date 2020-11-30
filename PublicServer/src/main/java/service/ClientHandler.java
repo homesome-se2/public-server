@@ -56,7 +56,6 @@ public class ClientHandler {
         clientDB = new DB_Clients();
         lock_clients = new Object();
         lock_login = new Object();
-        Server.getInstance().clientDB = clientDB;
     }
 
     public void launchWebSocketServer(int serverTcpPort, int clientLimit) {
@@ -381,39 +380,18 @@ public class ClientHandler {
         }
     }
 
-    public String getUserNameIdByUserSessionId(int userSessionID) throws Exception {
-        synchronized (lock_clients) {
-            String theNameId = "";
-            for (Session session : connectedClients.keySet()) {
-                Client client = connectedClients.get(session);
-                if (client instanceof Client_User) {
-                    if (((Client_User) client).sessionID == userSessionID) {
-                        theNameId = ((Client_User) client).getNameID();
-                        //System.out.println("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"+ theNameId);
-                        return theNameId;
-                    }
-                }
-            }
+    public void logoutOneDevice(int sessionId) throws Exception{
+        synchronized (lock_clients){
+        String sessionKey = ((Client_User)connectedClients.get(getSession(sessionId))).getSessionKey();
+        clientDB.logoutThisDevice(sessionKey);
         }
-        throw new Exception("Name Id not found!");
-
     }
 
-    public String getSessionKeyByUserSessionId(int userSessionID) throws Exception {
-        synchronized (lock_clients) {
-            String theSessionKey = "";
-            for (Session session : connectedClients.keySet()) {
-                Client client = connectedClients.get(session);
-                if (client instanceof Client_User) {
-                    if (((Client_User) client).sessionID == userSessionID) {
-                        theSessionKey = ((Client_User) client).getSessionKey();
-                        //System.out.println("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"+ theSessionKey);
-                        return theSessionKey;
-                    }
-                }
-            }
+    public void logoutAllDevices(int sessionId) throws Exception{
+        synchronized (lock_clients){
+            String nameId = ((Client_User)connectedClients.get(getSession(sessionId))).getNameID();
+            clientDB.logoutAllDevices(nameId);
         }
-        throw new Exception("Session Key not found!");
     }
 
 
