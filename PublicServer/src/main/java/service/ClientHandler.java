@@ -101,6 +101,12 @@ public class ClientHandler {
         }
     }
 
+    public void removeTheClient(int sessionID) throws Exception {
+        synchronized (lock_clients) {
+            removeClient(getSession(sessionID));
+        }
+    }
+
     // ========================================= CLIENT REQUESTS ==================================================
 
     // Called from WebSocket implementation class @OnWebSocketMessage
@@ -142,10 +148,13 @@ public class ClientHandler {
                         manualUserLogin(session, commands);
                         break;
                     case "103": // Automatic user login (Android or browser)
-                        automaticUserLogin(session, commands, true);
+                        automaticUserLogin(session, commands, false);
                         break;
                     case "120": // Hub login
                         hubLogin(session, commands);
+                        break;
+                    case "501": // Android background process reports location
+                        automaticUserLogin(session, commands, true);
                         break;
                     default:
                         throw new Exception("Invalid login format");
@@ -204,7 +213,7 @@ public class ClientHandler {
     }
 
     // #103
-    public void automaticUserLogin(Session session, String[] loginRequest, boolean sendConfirmationMsg) throws Exception {
+    public void automaticUserLogin(Session session, String[] loginRequest, boolean backgroundAndroid) throws Exception {
         //TODO: Implement automatic login
         /**
          * Similar to manualUserLogin, except:
@@ -215,13 +224,15 @@ public class ClientHandler {
         // Request according to HoSo protocol: #103
         String nameID = loginRequest[1];
         String sessionKey = loginRequest[2];
-        String confirmationMessage="";
+        String confirmationMessage = "";
+       /*
         if (loginRequest.length > 3) {
             confirmationMessage = loginRequest[3];
         }
         if (!confirmationMessage.isEmpty()) {
-            sendConfirmationMsg = Boolean.valueOf(confirmationMessage);
+            backgroundAndroid = Boolean.valueOf(confirmationMessage);
         }
+        */
         // Here it should verify the entered session key with one that has been encrypted using the same encrypted key
 
         //boolean check = Encryption.verifyValue(sessionKey,encryptedKey, String.valueOf(generateSalt(160)));
@@ -239,9 +250,17 @@ public class ClientHandler {
 
         Client_User validClient = new Client_User(hubId, nameID, isAdmin, sessionKey);
         connectedClients.put(session, validClient);
-
         debugLog(String.format("%s (%s)", "Client logged in", nameID), validClient.sessionID, getIP(session));
-        if (sendConfirmationMsg) {
+
+        if (backgroundAndroid) {
+            String longitude = loginRequest[3];
+            String lat = loginRequest[4];
+
+            String serverRequest = String.format("502::%s::%s::1", longitude, lat);
+            ClientRequest forwardLocation = new ClientRequest(validClient.sessionID, serverRequest);
+            Server.getInstance().clientRequests.put(forwardLocation);
+
+        } else {
             // Response according to HoSo protocol #104
             String responseMsg = "Successful login";
             String loginConfirmation = String.format("104::%s", responseMsg);
@@ -251,11 +270,13 @@ public class ClientHandler {
             String request = String.format("%s::%s", "302", validClient.sessionID); //302::1
             ClientRequest requestAllGadgets = new ClientRequest(validClient.sessionID, request);// 1,"302::1"
             Server.getInstance().clientRequests.put(requestAllGadgets);
-            //}else {
-            //  throw new Exception("Wrong session key! ");
-            //}
-        } else {
-            // do nothing because it is logged in from background process to send geo locations
+
+        }
+    }
+
+    public String getUserNameID(int sessionID) throws Exception {
+        synchronized (lock_clients) {
+            return ((Client_User) connectedClients.get(getSession(sessionID))).getNameID();
         }
     }
 
@@ -380,16 +401,16 @@ public class ClientHandler {
         }
     }
 
-    public void logoutOneDevice(int sessionId) throws Exception{
-        synchronized (lock_clients){
-        String sessionKey = ((Client_User)connectedClients.get(getSession(sessionId))).getSessionKey();
-        clientDB.logoutThisDevice(sessionKey);
+    public void logoutOneDevice(int sessionId) throws Exception {
+        synchronized (lock_clients) {
+            String sessionKey = ((Client_User) connectedClients.get(getSession(sessionId))).getSessionKey();
+            clientDB.logoutThisDevice(sessionKey);
         }
     }
 
-    public void logoutAllDevices(int sessionId) throws Exception{
-        synchronized (lock_clients){
-            String nameId = ((Client_User)connectedClients.get(getSession(sessionId))).getNameID();
+    public void logoutAllDevices(int sessionId) throws Exception {
+        synchronized (lock_clients) {
+            String nameId = ((Client_User) connectedClients.get(getSession(sessionId))).getNameID();
             clientDB.logoutAllDevices(nameId);
         }
     }

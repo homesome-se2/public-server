@@ -5,7 +5,6 @@ import com.google.gson.Gson;
 import model.ClientRequest;
 import model.Client_Hub;
 import model.Settings;
-import org.eclipse.jetty.websocket.api.Session;
 
 import java.io.FileNotFoundException;
 import java.io.FileReader;
@@ -17,11 +16,11 @@ public class Server {
     public BlockingQueue<ClientRequest> clientRequests;
     public volatile Settings settings;
     public volatile boolean terminateServer;
-    public  DB_Clients clientDB;
+    public DB_Clients clientDB;
     // config.json
     //Note: 'config.json' should be located "next to" the project folder: [config.json][PublicServer]
     //private static final String configFileJSON = "./config.json";  // When run as JAR on Linux
-   // private static final String configFileJSON = (new File(System.getProperty("user.dir")).getParentFile().getPath()).concat("/config.json"); // When run from IDE
+    // private static final String configFileJSON = (new File(System.getProperty("user.dir")).getParentFile().getPath()).concat("/config.json"); // When run from IDE
     private static final String configFileJSON = "config.json"; // When run from IDE
 
     // Lock objects
@@ -52,7 +51,7 @@ public class Server {
             readInSettings();
 
             // Launch ClientHandler
-           ClientHandler.getInstance().launchWebSocketServer(settings.getServerPort(), settings.getClientLimit());
+            ClientHandler.getInstance().launchWebSocketServer(settings.getServerPort(), settings.getClientLimit());
             processRequests();
         } catch (Exception e) {
             System.out.println(e.getMessage());
@@ -98,7 +97,7 @@ public class Server {
                             clientLogout(commands, sessionID);
                             break;
                         case "106":
-                            clientLogoutAllDevices(commands,sessionID);
+                            clientLogoutAllDevices(commands, sessionID);
                             break;
                         case "201":
                             requestRemoteAccessCredentials(commands, sessionID);
@@ -142,11 +141,13 @@ public class Server {
                         case "411":
                             deleteGadgetGroup(commands, sessionID);
                             break;
+                            /*
                         case "501":
                             notLoggedAndroidReportsLocation(commands, sessionID);
                             break;
+                            */
                         case "502":
-                            loggedAndroidReportsLocation(commands, sessionID);
+                            androidReportsLocation(commands, sessionID);
                             break;
                         default:
                             ClientHandler.getInstance().outputToClients(sessionID, false, true, false, "901::Invalid format");
@@ -185,18 +186,18 @@ public class Server {
         ClientHandler.getInstance().logoutOneDevice(issuinSessionID);
         // 107
         String confirmLogout = String.format("107::%s", "Logout successful");
-        ClientHandler.getInstance().outputToClients(issuinSessionID,false,true,false,confirmLogout);
+        ClientHandler.getInstance().outputToClients(issuinSessionID, false, true, false, confirmLogout);
 
     }
 
     // #106 -> 107
-    private void clientLogoutAllDevices(String[] commands,int issuingSessionID) throws Exception {
+    private void clientLogoutAllDevices(String[] commands, int issuingSessionID) throws Exception {
 
         // Here it should bring the name ID for that user and send it to the DB to remove all sessionKey assigned to that user
         ClientHandler.getInstance().logoutAllDevices(issuingSessionID);
         // 107
         String msg = String.format("107::%s", "All devices logged out");
-        ClientHandler.getInstance().outputToClients(issuingSessionID,false,false,false,msg);
+        ClientHandler.getInstance().outputToClients(issuingSessionID, false, false, false, msg);
     }
 
     // #301 -> #302
@@ -294,7 +295,7 @@ public class Server {
     }
 
     // #370 -> #371
-    private void requestGadgetGroups(int cSessionID) throws Exception{
+    private void requestGadgetGroups(int cSessionID) throws Exception {
        /*
         // #370 CLIENT -> PS---- NO ARGUMENTS      ---- DONE
         // #371 PS -> HUB ------ CLIENT SESSION ID ---- DONE
@@ -334,7 +335,6 @@ public class Server {
         // Send to individual client
         ClientHandler.getInstance().outputToClients(targetSessionID, false, true, false, forwardGroups);
     }
-
 
 
     //WC -> PS 201 -------{ UNDER CONSTRUCTION }----------
@@ -422,6 +422,7 @@ public class Server {
     }
 
     //501 AC -> PS --- 503 PS -> H
+   /*
     public void notLoggedAndroidReportsLocation(String[] commands, int issuingSessionID) throws Exception {
         //C_nameID, C_sessionKey, Ac_longitude, Ac_latitude
         String nameID = commands[1];
@@ -432,7 +433,7 @@ public class Server {
 
         // call automatic login and give it the nameID, session key, and value = false to not send data
         // to the background automatic logged in device. THIS WILL BE HANDLED BY THE automaticLogIn()
-        String loginRequest = "103::" + nameID + "::" + sessionKey + "::"+"false";
+        String loginRequest = "103::" + nameID + "::" + sessionKey + "::" + "false";
         //submitting the log in as a request
         ClientHandler.getInstance().addClientRequest(session, loginRequest);
         // getting the hub session ID that corresponds to that client
@@ -444,20 +445,25 @@ public class Server {
         ClientHandler.getInstance().outputToClients(hubSessionID, true, false, false, forwardMsg);
 
     }
-
+*/
     //502 AC -> PS -- 503 PS -> H
-    public void loggedAndroidReportsLocation(String[] commands, int issuingSessionID) throws Exception {
+    public void androidReportsLocation(String[] commands, int issuingSessionID) throws Exception {
         //Ac_longitude, Ac_latitude
         String longitude = commands[1];
         String latitude = commands[2];
+        boolean isBackgroundReq = commands[3].equals("1");
+        String userName = ClientHandler.getInstance().getUserNameID(issuingSessionID);
 
         //503 PS -> H
         //forward C_nameID, Ac_longitude, Ac_latitude
         // getting the hub session ID that corresponds to that client
         int hubSessionID = ClientHandler.getInstance().getHubSessionIdByUserSessionId(issuingSessionID);
-        String forwardMsg = String.format("%s::%s::%s", "503", longitude, latitude);
+        String forwardMsg = String.format("503::%s::%s::%s", userName, longitude, latitude);
         //outputting to the hub all the information obtained earlier above
-        ClientHandler.getInstance().outputToClients(hubSessionID, true, false, false, forwardMsg);
+        ClientHandler.getInstance().outputToClients(hubSessionID, true, true, false, forwardMsg);
+        if (isBackgroundReq) {
+            ClientHandler.getInstance().removeTheClient(issuingSessionID);
+        }
     }
 
 
